@@ -26,6 +26,7 @@ Downloads are skipped when the requested build is already present. CocoaPods onl
 ## iOS setup
 
 - **Microphone string.** Add `NSMicrophoneUsageDescription` to `Info.plist`.
+- **Background audio.** To keep a conversation going with the screen locked or the app in the background, add `audio` to `UIBackgroundModes`. Without it iOS suspends the app, the connection drops, and a new session starts when the app returns. The session keeps billing while backgrounded, so stop the engine when the conversation ends.
 - **Device only.** The AICoustics xcframework has no simulator slice, so build for a physical iPhone.
 - **New architecture.** The toolkit is a C++ TurboModule; the app must run with the new architecture (the RN default).
 - **Privacy manifest.** The pod ships one declaring the file-timestamp API the frameworks use; it's merged into the app's privacy report automatically.
