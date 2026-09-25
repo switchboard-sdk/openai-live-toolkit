@@ -165,6 +165,7 @@ const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
  * The model owns turn-taking, so there are no local VAD / turn taps.
  */
 function buildLiveEngine(
+  apiKey: string,
   tools: object[],
   session: {
     model: string
@@ -210,6 +211,9 @@ function buildLiveEngine(
       id: LIVE_NODE,
       type: 'OpenAI.Live',
       configuration: {
+        // Passed to the node directly: GPT-Live has no token fallback if the
+        // extension-level key doesn't reach it.
+        apiKey,
         model: session.model,
         voice: session.voice,
         instructions: session.instructions,
@@ -427,7 +431,7 @@ export function createOpenAILiveToolkit() {
       const res = c.callAction(
         'switchboard',
         'createEngine',
-        buildLiveEngine(toolDefs(), session, {
+        buildLiveEngine(openAIApiKey, toolDefs(), session, {
           available: isolationAvailable,
           enabled: speakerIsolation,
         })

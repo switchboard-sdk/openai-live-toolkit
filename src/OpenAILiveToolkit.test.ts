@@ -283,6 +283,7 @@ describe('graph', () => {
   it('bakes defaults into the Live node', async () => {
     await running()
     expect(liveNodeConfig()).toEqual({
+      apiKey: 'sk-openai',
       model: 'gpt-live-1',
       voice: 'marin',
       instructions: '',
