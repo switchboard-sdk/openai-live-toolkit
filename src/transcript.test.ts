@@ -1,4 +1,4 @@
-import { appendFragment, MAX_ENTRIES, type TranscriptEntry } from './transcript'
+import { appendFragment, MAX_ENTRIES, nextSessionOffset, type TranscriptEntry } from './transcript'
 
 function counter() {
   let n = 0
@@ -24,24 +24,34 @@ describe('appendFragment', () => {
     expect(t.map((e) => e.text)).toEqual(['One', 'Two'])
   })
 
-  it('keeps interleaved speakers apart, joining each to its own latest entry', () => {
+  it('ends an entry when the other speaker talks in between', () => {
     const id = counter()
     let t: TranscriptEntry[] = []
     t = appendFragment(t, 'user', ' Tell me', 0, 200, id)
     t = appendFragment(t, 'assistant', ' Mm-hmm.', 200, 400, id)
     t = appendFragment(t, 'user', ' a story', 400, 600, id)
     expect(t.map((e) => [e.speaker, e.text])).toEqual([
-      ['user', 'Tell me a story'],
+      ['user', 'Tell me'],
       ['assistant', 'Mm-hmm.'],
+      ['user', 'a story'],
     ])
   })
 
-  it('orders entries by start time', () => {
+  it('keeps a quick back-and-forth in the order it was said', () => {
     const id = counter()
     let t: TranscriptEntry[] = []
-    t = appendFragment(t, 'assistant', ' Later', 3000, 3200, id)
-    t = appendFragment(t, 'user', ' Earlier', 1000, 1200, id)
-    expect(t.map((e) => e.text)).toEqual(['Earlier', 'Later'])
+    t = appendFragment(t, 'user', ' Hi', 0, 200, id)
+    t = appendFragment(t, 'assistant', ' Hello!', 400, 600, id)
+    t = appendFragment(t, 'user', ' How are you', 800, 1000, id)
+    expect(t.map((e) => e.text)).toEqual(['Hi', 'Hello!', 'How are you'])
+  })
+
+  it('does not join a fragment that starts before the last entry (a new timeline)', () => {
+    const id = counter()
+    let t: TranscriptEntry[] = []
+    t = appendFragment(t, 'user', ' Before', 60000, 60200, id)
+    t = appendFragment(t, 'user', ' After restart', 0, 200, id)
+    expect(t.map((e) => e.text)).toEqual(['Before', 'After restart'])
   })
 
   it('ignores empty fragments and does not mutate the input', () => {
@@ -61,5 +71,14 @@ describe('appendFragment', () => {
     }
     expect(t).toHaveLength(MAX_ENTRIES)
     expect(t[0]!.text).toBe('5')
+  })
+})
+
+describe('nextSessionOffset', () => {
+  it('starts past the last entry, or at 0 when empty', () => {
+    expect(nextSessionOffset([])).toBe(0)
+    const id = counter()
+    const t = appendFragment([], 'user', ' Hi', 0, 5000, id)
+    expect(nextSessionOffset(t)).toBeGreaterThan(5000 + 1500)
   })
 })

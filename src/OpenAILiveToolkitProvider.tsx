@@ -15,7 +15,7 @@ import {
   type OpenAILiveToolkitTool,
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
-import { appendFragment, type TranscriptEntry } from './transcript'
+import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
 
 /**
  * Session connection state. `'error'` means the session was attempted and refused —
@@ -147,6 +147,9 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   const [sessionState, setSessionState] = useState<'none' | 'connecting' | 'connected'>('none')
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const entryIdRef = useRef(0)
+  // Shift applied to the current session's fragment times, so a new session (whose timeline
+  // restarts at 0) continues after the existing transcript.
+  const timelineOffsetRef = useRef(0)
   const [hasMicrophonePermission, setHasMicrophonePermission] = useState<boolean | null>(null)
   const [instructions, setInstructionsState] = useState(props.instructions ?? '')
   const [voice, setVoiceState] = useState<OpenAIVoice>(props.voice ?? DEFAULT_VOICE)
@@ -194,6 +197,11 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
         case 'sessionStarted':
           setSessionState('connected')
           setError(null)
+          // Read and set inside the updater so it's ordered with the fragment updates below.
+          setTranscript((entries) => {
+            timelineOffsetRef.current = nextSessionOffset(entries)
+            return entries
+          })
           break
         case 'sessionClosed': {
           const reason = (e.data as { reason?: string })?.reason
@@ -205,7 +213,14 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
           const d = e.data as { delta?: string; startMs?: number; endMs?: number }
           const speaker = e.name === 'inputTranscriptDelta' ? 'user' : 'assistant'
           setTranscript((entries) =>
-            appendFragment(entries, speaker, d.delta ?? '', d.startMs ?? 0, d.endMs ?? 0, nextId)
+            appendFragment(
+              entries,
+              speaker,
+              d.delta ?? '',
+              (d.startMs ?? 0) + timelineOffsetRef.current,
+              (d.endMs ?? 0) + timelineOffsetRef.current,
+              nextId
+            )
           )
           break
         }

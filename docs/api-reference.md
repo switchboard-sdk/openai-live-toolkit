@@ -28,7 +28,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `error` | Outstanding fatal `OpenAILiveError`, or null. |
 | `start()`, `stop()`, `release()` | Start opens a session; stop closes it and keeps the engine; release frees it. |
 | `hasMicrophonePermission`, `requestMicrophonePermission()` | `start()` requests it automatically. |
-| `transcript`, `clearTranscript()` | `TranscriptEntry[]`: `{ id, speaker: 'user' \| 'assistant', text, startMs, endMs }`, ordered by time. |
+| `transcript`, `clearTranscript()` | `TranscriptEntry[]`: `{ id, speaker: 'user' \| 'assistant', text, startMs, endMs }`, in the order things were said. A new line starts whenever the speaker changes. |
 | `instructions`, `setInstructions(text)` | Fixed per session: while running this starts a new session and drops the conversation. |
 | `appendInstructions(text)` | Adds trusted instructions to the live session. Returns false with no session. |
 | `addContext(text)` | Quiet context the model uses but doesn't say. |

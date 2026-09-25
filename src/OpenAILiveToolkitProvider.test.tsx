@@ -198,6 +198,20 @@ describe('transcript', () => {
     act(() => result.current.clearTranscript())
     expect(result.current.transcript).toEqual([])
   })
+
+  it("doesn't merge a new session's lines into the previous session's", () => {
+    const { result } = renderProvider()
+    emitLive('sessionStarted', { sessionId: 's1' })
+    emitLive('inputTranscriptDelta', { delta: ' First session', startMs: 30000, endMs: 30200 })
+    emitLive('sessionStarted', { sessionId: 's2' })
+    // The new session's timeline starts at 0 again.
+    emitLive('inputTranscriptDelta', { delta: ' Second session', startMs: 0, endMs: 200 })
+    emitLive('inputTranscriptDelta', { delta: ' continues', startMs: 200, endMs: 400 })
+    expect(result.current.transcript.map((e) => e.text)).toEqual([
+      'First session',
+      'Second session continues',
+    ])
+  })
 })
 
 describe('start / stop / release', () => {
