@@ -4,7 +4,7 @@
 
 GPT-Live doesn't call functions itself. When a request needs work, it delegates to a Responses model (`delegateModel`, `gpt-5.5` by default), which calls your tools. The toolkit runs the handler and returns the result, the delegate finishes, and GPT-Live speaks the outcome. The conversation keeps going while that happens, so a slow handler doesn't freeze the voice.
 
-The delegate only runs, and bills, when the model hands it work. Steer it with the provider's `delegateInstructions`.
+GPT-Live only delegates work it knows can be done, so the toolkit adds a line naming the registered tools to its instructions, and tells a running session when the set changes. The delegate is told to call the matching tool rather than claim it acted; the provider's `delegateInstructions` are added after that. The delegate only runs, and bills, when the model hands it work.
 
 ## `useTool`
 

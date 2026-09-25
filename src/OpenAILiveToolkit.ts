@@ -139,6 +139,14 @@ export interface OpenAILiveToolkitTool {
   handler: (args: any) => unknown | Promise<unknown>
 }
 
+/** A registered tool as the delegate sees it. */
+interface ToolDef {
+  type: 'function'
+  name: string
+  description: string
+  parameters: object
+}
+
 /** Payload of a `toolCall` event from the Live node. */
 interface ToolCall {
   callId: string
@@ -159,6 +167,25 @@ const GRAPH_SAMPLE_RATE = 48000
 const QUAIL_SAMPLE_RATE = 16000
 const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
 
+// GPT-Live only delegates work it knows can be done, and the tools live in the delegate's config,
+// so the live model is told about them; the delegate is told to call them rather than say it did.
+const DELEGATE_INSTRUCTIONS =
+  "You carry out actions in the user's app. When a request matches one of your tools, call the " +
+  'tool; never claim an action is done without calling it.'
+
+/** What the live model is told about the registered tools. Empty with no tools. */
+export function toolsNote(tools: readonly { name: string; description: string }[]): string {
+  if (tools.length === 0) {
+    return ''
+  }
+  const list = tools.map((t) => `${t.name} (${t.description})`).join('; ')
+  return `You can act in the app through tools: ${list}. Use them whenever the user asks for one of these.`
+}
+
+function joinInstructions(...parts: string[]): string {
+  return parts.filter((p) => p.trim() !== '').join('\n\n')
+}
+
 /**
  * The Switchboard graph the toolkit runs:
  * microphone → mono → [Quail speaker isolation] → OpenAI.Live → speaker.
@@ -166,7 +193,7 @@ const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
  */
 function buildLiveEngine(
   apiKey: string,
-  tools: object[],
+  tools: ToolDef[],
   session: {
     model: string
     voice: OpenAIVoice
@@ -216,12 +243,15 @@ function buildLiveEngine(
         apiKey,
         model: session.model,
         voice: session.voice,
-        instructions: session.instructions,
+        instructions: joinInstructions(session.instructions, toolsNote(tools)),
         // Always Responses delegation, so tools can be added or removed on a live
         // session. The delegate only runs (and bills) when the model hands it work.
         delegation: 'responses',
         responsesModel: session.delegateModel,
-        responsesInstructions: session.delegateInstructions,
+        responsesInstructions: joinInstructions(
+          DELEGATE_INSTRUCTIONS,
+          session.delegateInstructions
+        ),
         tools,
       },
     },
@@ -280,6 +310,10 @@ export function createOpenAILiveToolkit() {
     delegateInstructions: '',
   }
   const tools = new Map<string, OpenAILiveToolkitTool>()
+  // The tools note the current session's instructions carry, to tell when a live update is needed.
+  let sessionToolsNote = ''
+  // The tools note in the instructions last written to the node, which the next session starts with.
+  let lastWrittenToolsNote = ''
 
   const listeners: Record<OpenAILiveToolkitEventType, Set<OpenAILiveToolkitEventListener>> = {
     live: new Set(),
@@ -428,6 +462,7 @@ export function createOpenAILiveToolkit() {
     // Create the engine once; start/stop reuse it, release() frees it.
     let id = engineId
     if (!id) {
+      lastWrittenToolsNote = toolsNote(toolDefs())
       const res = c.callAction(
         'switchboard',
         'createEngine',
@@ -466,7 +501,28 @@ export function createOpenAILiveToolkit() {
   function setInstructions(next: string): void {
     session.instructions = next
     if (engineId) {
-      client?.setValue(LIVE_NODE, 'instructions', next)
+      lastWrittenToolsNote = toolsNote(toolDefs())
+      client?.setValue(LIVE_NODE, 'instructions', liveInstructions())
+    }
+  }
+
+  /** The live model's instructions: the app's prompt plus the note about the current tools. */
+  function liveInstructions(): string {
+    return joinInstructions(session.instructions, toolsNote(toolDefs()))
+  }
+
+  /**
+   * Tell the running session about the current tools. The node's instructions are only read
+   * when a session starts, so a change is sent as appended instructions instead.
+   */
+  function syncToolsNote(): void {
+    const note = toolsNote(toolDefs())
+    if (!sessionLive || note === sessionToolsNote) {
+      return
+    }
+    const text = note === '' ? 'You no longer have any tools.' : `Your tools changed. ${note}`
+    if (!client?.callAction(LIVE_NODE, 'appendInstructions', { text }).error) {
+      sessionToolsNote = note
     }
   }
 
@@ -524,6 +580,7 @@ export function createOpenAILiveToolkit() {
     tools.set(tool.name, tool)
     if (engineId) {
       client?.setValue(LIVE_NODE, 'tools', toolDefs())
+      syncToolsNote()
     }
   }
 
@@ -531,13 +588,14 @@ export function createOpenAILiveToolkit() {
   function unregisterTool(name: string): void {
     if (tools.delete(name) && engineId) {
       client?.setValue(LIVE_NODE, 'tools', toolDefs())
+      syncToolsNote()
     }
   }
 
   /** Function definitions for the registered tools (handlers stripped). */
-  function toolDefs(): object[] {
+  function toolDefs(): ToolDef[] {
     return Array.from(tools.values()).map((t) => ({
-      type: 'function',
+      type: 'function' as const,
       name: t.name,
       description: t.description,
       parameters: t.parameters ?? { type: 'object', properties: {}, additionalProperties: false },
@@ -663,6 +721,9 @@ export function createOpenAILiveToolkit() {
         if (muted) {
           client?.callAction(LIVE_NODE, 'muteInput')
         }
+        // A new session reads the instructions last written to the node; bring its tools note up to date.
+        sessionToolsNote = lastWrittenToolsNote
+        syncToolsNote()
         break
       case 'sessionStarting':
       case 'sessionDisconnected':

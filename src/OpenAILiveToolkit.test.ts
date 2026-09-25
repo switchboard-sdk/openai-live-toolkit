@@ -3,6 +3,7 @@ jest.mock('./NativeOpenAILiveToolkit')
 import {
   createOpenAILiveToolkit,
   OpenAILiveError,
+  toolsNote,
   type OpenAILiveToolkit,
 } from './OpenAILiveToolkit'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
@@ -289,7 +290,7 @@ describe('graph', () => {
       instructions: '',
       delegation: 'responses',
       responsesModel: 'gpt-5.5',
-      responsesInstructions: '',
+      responsesInstructions: expect.stringContaining('never claim an action is done'),
       tools: [],
     })
   })
@@ -306,11 +307,13 @@ describe('graph', () => {
     toolkit.registerTool({ name: 'get_time', description: 'Time', handler: () => '' })
     await toolkit.start()
     expect(liveNodeConfig()).toMatchObject({
-      instructions: 'Be terse.',
+      instructions: 'Be terse.\n\n' + toolsNote([{ name: 'get_time', description: 'Time' }]),
       voice: 'cedar',
       model: 'gpt-live-2',
       responsesModel: 'gpt-6',
-      responsesInstructions: 'Use tools.',
+      responsesInstructions: expect.stringMatching(
+        /never claim an action is done[\s\S]*Use tools\.$/
+      ),
       tools: [
         {
           type: 'function',
@@ -409,6 +412,68 @@ describe('tools', () => {
     const writes = setValuesFor('liveNode', 'tools')
     expect(writes).toHaveLength(2)
     expect(writes.at(-1).params.value).toEqual([])
+  })
+})
+
+describe('tools note', () => {
+  it('lists each tool and is empty without tools', () => {
+    expect(toolsNote([])).toBe('')
+    expect(
+      toolsNote([
+        { name: 'a', description: 'Does A' },
+        { name: 'b', description: 'Does B' },
+      ])
+    ).toBe(
+      'You can act in the app through tools: a (Does A); b (Does B). ' +
+        'Use them whenever the user asks for one of these.'
+    )
+  })
+
+  it('setInstructions writes the prompt with the current tools note', async () => {
+    const toolkit = await running()
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    toolkit.setInstructions('Be kind.')
+    expect(setValuesFor('liveNode', 'instructions').at(-1).params.value).toBe(
+      'Be kind.\n\n' + toolsNote([{ name: 'a', description: 'A' }])
+    )
+  })
+
+  it('tells a live session when tools change, once per change', async () => {
+    const toolkit = await running()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 2 })
+    toolkit.unregisterTool('a')
+    expect(commandsFor('appendInstructions').map((c) => c.params.params.text)).toEqual([
+      'Your tools changed. ' + toolsNote([{ name: 'a', description: 'A' }]),
+      'You no longer have any tools.',
+    ])
+  })
+
+  it('does not append before a session is up', async () => {
+    const toolkit = await running()
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    expect(commandsFor('appendInstructions')).toHaveLength(0)
+  })
+
+  it('brings a new session up to date when tools changed since the instructions were written', async () => {
+    const toolkit = await running()
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    expect(commandsFor('appendInstructions')).toHaveLength(1)
+
+    // A reconnect starts from the node's instructions again, which still lack the tool.
+    emitEvent('engine-1.liveNode', 'sessionDisconnected')
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(commandsFor('appendInstructions')).toHaveLength(2)
+  })
+
+  it('leaves a new session alone when its instructions already carry the tools', async () => {
+    const toolkit = initialized()
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    await toolkit.start()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    expect(commandsFor('appendInstructions')).toHaveLength(0)
   })
 })
 

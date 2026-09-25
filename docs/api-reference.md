@@ -15,7 +15,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `voice` | `'marin'` | See `VOICES`. |
 | `model` | `'gpt-live-1'` | Fixed once the engine is built. |
 | `delegateModel` | `'gpt-5.5'` | Responses model that runs delegated work and tools. |
-| `delegateInstructions` | `''` | Instructions for the delegate. |
+| `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
 | `speakerIsolation` | `true` | Start with Quail on. |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
