@@ -18,6 +18,7 @@ jest.mock('./OpenAILiveToolkit', () => {
       }
     }),
     isRunning: false,
+    isSpeakerIsolationSupported: true,
     isSpeakerIsolationAvailable: true,
     initError: null as string | null,
     start: jest.fn(() => Promise.resolve()),
@@ -85,6 +86,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   toolkit.initError = null
   toolkit.isRunning = false
+  toolkit.isSpeakerIsolationSupported = true
   toolkit.isSpeakerIsolationAvailable = true
   toolkit.start.mockImplementation(() => Promise.resolve())
   toolkit.requestMicrophonePermission.mockImplementation(() => Promise.resolve(true))
@@ -120,7 +122,7 @@ describe('initialization', () => {
       voice: 'marin',
       model: 'gpt-live-1',
       muted: false,
-      speakerIsolation: { available: true, enabled: true },
+      speakerIsolation: { supported: true, available: true, enabled: true },
     })
   })
 
@@ -128,6 +130,13 @@ describe('initialization', () => {
     toolkit.isSpeakerIsolationAvailable = false
     const { result } = renderProvider()
     expect(result.current.speakerIsolation.available).toBe(false)
+  })
+
+  it('reports isolation as unsupported when the build has no AICoustics', () => {
+    toolkit.isSpeakerIsolationSupported = false
+    toolkit.isSpeakerIsolationAvailable = false
+    const { result } = renderProvider()
+    expect(result.current.speakerIsolation).toMatchObject({ supported: false, available: false })
   })
 
   it('throws for a blank Switchboard credential', () => {

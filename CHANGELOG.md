@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - `OpenAILiveToolkitProvider`, `useOpenAILiveToolkit` and `useTool` for full-duplex GPT-Live voice agents on iOS.
-- Quail speaker isolation, switchable at runtime.
+- Optional Quail speaker isolation, switchable at runtime. Linked with `OPENAI_LIVE_AICOUSTICS=1` at `pod install`.
 - Tools through Responses delegation.
 - A grouped live transcript of both speakers.
 - Context actions: `appendInstructions`, `addContext`, `say`.

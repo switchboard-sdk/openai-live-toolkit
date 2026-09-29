@@ -22,6 +22,9 @@ export interface Spec extends TurboModule {
   /** Request microphone permission; resolves to whether it's granted. */
   readonly requestMicrophonePermission: () => Promise<boolean>
 
+  /** Whether this build links the AICoustics extension (opt-in at `pod install`). */
+  readonly isSpeakerIsolationSupported: () => boolean
+
   /** Stream of Switchboard events, delivered as JSON strings. */
   readonly onEventReceived: CodegenTypes.EventEmitter<string>
 }

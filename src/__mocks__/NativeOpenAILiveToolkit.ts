@@ -20,6 +20,7 @@ const processCommand = jest.fn<string, [string]>(() => '{"jsonrpc":"2.0","id":1,
 const getDocumentsPath = jest.fn<string, []>(() => '/mock/documents')
 const writeFile = jest.fn<boolean, [string, string]>(() => true)
 const requestMicrophonePermission = jest.fn<Promise<boolean>, []>(() => Promise.resolve(true))
+const isSpeakerIsolationSupported = jest.fn<boolean, []>(() => true)
 
 const onEventReceived = jest.fn((cb: EventCallback) => {
   currentCallback = cb
@@ -53,6 +54,8 @@ export function resetNativeMock(): void {
   writeFile.mockReturnValue(true)
   requestMicrophonePermission.mockReset()
   requestMicrophonePermission.mockResolvedValue(true)
+  isSpeakerIsolationSupported.mockReset()
+  isSpeakerIsolationSupported.mockReturnValue(true)
   onEventReceived.mockClear()
   currentCallback = null
 }
@@ -62,6 +65,7 @@ const NativeOpenAILiveToolkitMock = {
   getDocumentsPath,
   writeFile,
   requestMicrophonePermission,
+  isSpeakerIsolationSupported,
   onEventReceived,
 }
 

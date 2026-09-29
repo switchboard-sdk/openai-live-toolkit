@@ -3,12 +3,15 @@
 # Downloads the Switchboard SDK + extension xcframeworks for iOS.
 #
 # Invoked by OpenAILiveToolkit.podspec's `prepare_command` during `pod install`.
-# Pulls private builds from Switchboard's S3 bucket (AICoustics isn't published
-# publicly), so it needs AWS credentials with read access to s3://switchboard-sdk.
-# The downloaded binaries are git-ignored and re-fetched on a clean checkout.
+# Pulls private builds from Switchboard's S3 bucket, so it needs AWS credentials
+# with read access to s3://switchboard-sdk. The downloaded binaries are
+# git-ignored and re-fetched on a clean checkout.
 #
-# SWITCHBOARD_BUILD picks the build: a branch build (default, until OpenAI.Live
-# ships in a release) or "release/<version>".
+# SWITCHBOARD_BUILD picks the build: "release/<version>" (default) or a branch
+# build path.
+#
+# OPENAI_LIVE_AICOUSTICS=1 also fetches the AICoustics extension for speaker
+# isolation. It isn't published, so it's left out by default.
 #
 # Layout produced (matches the podspec's vendored_frameworks / search paths):
 #   ios/Frameworks/<Package>/ios/include/...           (C++ headers)
@@ -16,10 +19,13 @@
 #   ios/Frameworks/<Package>/ios/models/...            (AICoustics models)
 set -euo pipefail
 
-SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-ivannador/swi-6906-openailive-node-in-switchboardopenai-extension}"
+SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-release/3.2.8}"
 BASE_URL="s3://switchboard-sdk/builds/${SWITCHBOARD_BUILD}/ios"
 
-PACKAGES=(SwitchboardSDK SwitchboardOpenAI SwitchboardAICoustics)
+PACKAGES=(SwitchboardSDK SwitchboardOpenAI)
+if [ "${OPENAI_LIVE_AICOUSTICS:-}" = "1" ]; then
+  PACKAGES+=(SwitchboardAICoustics)
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORKS_DIR="${SCRIPT_DIR}/../ios/Frameworks"

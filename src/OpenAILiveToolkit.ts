@@ -75,8 +75,9 @@ export interface OpenAILiveToolkitInitializeOptions {
   /** OpenAI API key. Required by {@link OpenAILiveToolkit.start}. */
   openAIApiKey?: string
   /**
-   * ai-coustics license key. Without it the graph is built without speaker
-   * isolation and {@link OpenAILiveToolkit.setSpeakerIsolation} does nothing.
+   * ai-coustics license key. Speaker isolation needs it and a build that links the
+   * AICoustics extension. Without both the graph is built without it and
+   * {@link OpenAILiveToolkit.setSpeakerIsolation} does nothing.
    */
   aiCousticsLicenseKey?: string
   /** System prompt. Fixed per session; see {@link OpenAILiveToolkit.setInstructions}. */
@@ -215,7 +216,7 @@ function buildLiveEngine(
       {
         id: ISOLATION_NODE,
         type: 'AICoustics.SpeechEnhancer',
-        // Settings validated against GPT-Live in SWI-6905.
+        // Settings validated against GPT-Live with a competing talker in the room.
         configuration: {
           modelPath: QUAIL_MODEL,
           enabled: isolation.enabled,
@@ -299,6 +300,7 @@ export function createOpenAILiveToolkit() {
   let initError: string | null = null
   let nativeSubscribed = false
   let openAIApiKey = ''
+  let isolationSupported = false
   let isolationAvailable = false
   let speakerIsolation = true
   let muted = false
@@ -356,8 +358,14 @@ export function createOpenAILiveToolkit() {
     }
     openAIApiKey = options.openAIApiKey?.trim() ?? ''
     const licenseKey = options.aiCousticsLicenseKey?.trim() ?? ''
-    isolationAvailable = licenseKey !== ''
-    if (!isolationAvailable) {
+    isolationSupported = NativeOpenAILiveToolkit.isSpeakerIsolationSupported()
+    isolationAvailable = isolationSupported && licenseKey !== ''
+    if (!isolationSupported && licenseKey !== '') {
+      console.warn(
+        '[OpenAILiveToolkit] aiCousticsLicenseKey ignored: this build has no AICoustics extension. ' +
+          'Reinstall pods with OPENAI_LIVE_AICOUSTICS=1 to enable speaker isolation.'
+      )
+    } else if (isolationSupported && licenseKey === '') {
       console.warn(
         '[OpenAILiveToolkit] No aiCousticsLicenseKey provided — running without speaker isolation.'
       )
@@ -555,7 +563,7 @@ export function createOpenAILiveToolkit() {
     }
   }
 
-  /** Turn Quail speaker isolation on or off. Applied live. No-op without a license key. */
+  /** Turn Quail speaker isolation on or off. Applied live. No-op unless it's available. */
   function setSpeakerIsolation(enabled: boolean): void {
     speakerIsolation = enabled
     if (engineId && isolationAvailable) {
@@ -765,7 +773,11 @@ export function createOpenAILiveToolkit() {
     get isRunning(): boolean {
       return running
     },
-    /** Whether the graph includes speaker isolation (an ai-coustics license key was given). */
+    /** Whether this build links the AICoustics extension. Known after {@link initialize}. */
+    get isSpeakerIsolationSupported(): boolean {
+      return isolationSupported
+    },
+    /** Whether the graph includes speaker isolation: a supported build and a license key. */
     get isSpeakerIsolationAvailable(): boolean {
       return isolationAvailable
     },

@@ -51,7 +51,7 @@ npm test
 
 ## Release
 
-The package is internal and isn't published to npm. Versions follow [Semantic Versioning](https://semver.org/).
+The package isn't published to npm yet. Versions follow [Semantic Versioning](https://semver.org/).
 
 1. Update [`CHANGELOG.md`](CHANGELOG.md): move the `[Unreleased]` entries under a new version heading with the release date.
 2. Bump the version (this also creates the git tag) and push both:
