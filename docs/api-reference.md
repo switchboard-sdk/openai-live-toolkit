@@ -9,14 +9,14 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | Prop | Default | Notes |
 | --- | --- | --- |
 | `openAIApiKey` | — | Required to start. |
-| `aiCousticsLicenseKey` | — | Enables speaker isolation. |
+| `aiCousticsLicenseKey` | — | Enables speaker isolation in a build that links AICoustics. |
 | `appId`, `appSecret` | shared defaults | Switchboard credentials. A blank string throws. |
 | `instructions` | `''` | System prompt. |
 | `voice` | `'marin'` | See `VOICES`. |
 | `model` | `'gpt-live-1'` | Fixed once the engine is built. |
 | `delegateModel` | `'gpt-5.5'` | Responses model that runs delegated work and tools. |
 | `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
-| `speakerIsolation` | `true` | Start with Quail on. |
+| `speakerIsolation` | `true` | Start with Quail on, when it's available. |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
 ## `useOpenAILiveToolkit()`
@@ -35,7 +35,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `say(text)` | Content for the model to say aloud (it may paraphrase). |
 | `voice`, `setVoice(voice)` | Fixed per session, like `setInstructions`. |
 | `model` | Read-only. |
-| `speakerIsolation` | `{ available, enabled, setEnabled }`. `available` is false without a license key. Applied live. |
+| `speakerIsolation` | `{ supported, available, enabled, setEnabled }`. `supported`: the build links AICoustics. `available`: supported and a license key was given. Applied live. See [Speaker isolation](getting-started.md#speaker-isolation). |
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `registerTool(tool)`, `unregisterTool(name)` | See [Tools](tools.md). |
 

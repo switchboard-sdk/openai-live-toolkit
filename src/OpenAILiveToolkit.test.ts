@@ -23,6 +23,7 @@ const { emit, resetNativeMock } = mock
 const native = NativeOpenAILiveToolkit as unknown as {
   processCommand: jest.Mock<string, [string]>
   requestMicrophonePermission: jest.Mock<Promise<boolean>, []>
+  isSpeakerIsolationSupported: jest.Mock<boolean, []>
 }
 
 function sentCommands(): any[] {
@@ -124,7 +125,18 @@ describe('initialize', () => {
   })
 
   it('reports speaker isolation unavailable without a license key', () => {
-    expect(initialized().isSpeakerIsolationAvailable).toBe(false)
+    const toolkit = initialized()
+    expect(toolkit.isSpeakerIsolationSupported).toBe(true)
+    expect(toolkit.isSpeakerIsolationAvailable).toBe(false)
+  })
+
+  it('leaves AICoustics out when the build lacks it, even with a license key', () => {
+    native.isSpeakerIsolationSupported.mockReturnValue(false)
+    const toolkit = initialized(WITH_ISOLATION)
+    expect(commandFor('initialize').params.params.extensions.AICoustics).toBeUndefined()
+    expect(toolkit.isSpeakerIsolationSupported).toBe(false)
+    expect(toolkit.isSpeakerIsolationAvailable).toBe(false)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('OPENAI_LIVE_AICOUSTICS=1'))
   })
 
   it('falls back to the default Switchboard credentials when none are passed', () => {

@@ -25,7 +25,9 @@ export type OpenAILiveToolkitConnectionStatus = 'none' | 'connecting' | 'connect
 
 /** Speaker isolation (ai-coustics Quail) controls. */
 export interface SpeakerIsolation {
-  /** Whether the graph has speaker isolation at all (an ai-coustics license key was given). */
+  /** Whether this build links the AICoustics extension (opt-in at `pod install`). */
+  supported: boolean
+  /** Whether the graph has speaker isolation: `supported` and a license key was given. */
   available: boolean
   /** Whether it's on. */
   enabled: boolean
@@ -109,7 +111,7 @@ export interface OpenAILiveToolkitProviderProps {
   appSecret?: string
   /** OpenAI API key. Required to start: GPT-Live has no ephemeral tokens. */
   openAIApiKey?: string
-  /** ai-coustics license key. Without it there's no speaker isolation. */
+  /** ai-coustics license key. Speaker isolation needs it and a build with AICoustics. */
   aiCousticsLicenseKey?: string
   /** System prompt. Initial value; also settable via the hook. */
   instructions?: string
@@ -154,6 +156,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   const [instructions, setInstructionsState] = useState(props.instructions ?? '')
   const [voice, setVoiceState] = useState<OpenAIVoice>(props.voice ?? DEFAULT_VOICE)
   const [model] = useState(props.model ?? DEFAULT_MODEL)
+  const [isolationSupported, setIsolationSupported] = useState(false)
   const [isolationAvailable, setIsolationAvailable] = useState(false)
   const [isolationEnabled, setIsolationEnabled] = useState(props.speakerIsolation ?? true)
   const [muted, setMutedState] = useState(false)
@@ -185,6 +188,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       speakerIsolation: isolationEnabled,
     })
     setIsRunning(toolkit.isRunning)
+    setIsolationSupported(toolkit.isSpeakerIsolationSupported)
     setIsolationAvailable(toolkit.isSpeakerIsolationAvailable)
 
     const nextId = () => ++entryIdRef.current
@@ -342,6 +346,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     setVoice,
     model,
     speakerIsolation: {
+      supported: isolationSupported,
       available: isolationAvailable,
       enabled: isolationEnabled,
       setEnabled: setSpeakerIsolationEnabled,

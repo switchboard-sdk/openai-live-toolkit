@@ -2,7 +2,7 @@ import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
 
 /**
  * OpenAILiveToolkit — full-duplex OpenAI GPT-Live voice agents on iOS, with
- * ai-coustics speaker isolation, powered by the Switchboard SDK.
+ * optional ai-coustics speaker isolation, powered by the Switchboard SDK.
  *
  * Wrap your app in {@link OpenAILiveToolkitProvider} and drive it with the hooks below;
  * the engine and JSON-RPC transport are internal.

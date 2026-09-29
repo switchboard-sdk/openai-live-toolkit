@@ -1,6 +1,6 @@
 /**
  * OpenAILiveToolkit example — a full-duplex GPT-Live voice assistant with
- * speaker isolation, for internal testing.
+ * optional speaker isolation.
  *
  * All orchestration lives in the library. This app wraps itself in
  * <OpenAILiveToolkitProvider> with credentials, and the screen drives it with
@@ -99,16 +99,21 @@ function Screen(): React.JSX.Element {
       <View style={styles.section}>
         <Text style={styles.sectionHeader}>Audio</Text>
         <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>
-            Speaker isolation
-            {speakerIsolation.available ? '' : ' (no license key)'}
-          </Text>
+          <Text style={styles.toggleLabel}>Speaker isolation</Text>
           <Switch
             value={speakerIsolation.available && speakerIsolation.enabled}
             onValueChange={speakerIsolation.setEnabled}
             disabled={!speakerIsolation.available}
           />
         </View>
+        {speakerIsolation.available ? null : (
+          <Text style={styles.hint}>
+            {speakerIsolation.supported
+              ? 'Needs an ai-coustics license key. Set AIC_LICENSE_KEY in .env.'
+              : 'Needs the AICoustics extension and an ai-coustics license key. ' +
+                'See the example README.'}
+          </Text>
+        )}
         <View style={styles.toggleRow}>
           <Text style={styles.toggleLabel}>Mute microphone</Text>
           <Switch value={muted} onValueChange={setMuted} />

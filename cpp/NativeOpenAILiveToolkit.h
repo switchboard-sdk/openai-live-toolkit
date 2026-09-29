@@ -32,6 +32,7 @@ public:
   std::string getDocumentsPath(jsi::Runtime& rt);
   bool writeFile(jsi::Runtime& rt, std::string path, std::string contents);
   AsyncPromise<bool> requestMicrophonePermission(jsi::Runtime& rt);
+  bool isSpeakerIsolationSupported(jsi::Runtime& rt);
 
   /** Set by the iOS provider at startup. */
   static void setDocumentsPath(const std::string& path);
