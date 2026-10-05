@@ -9,6 +9,12 @@ OpenAI's GPT-Live (`gpt-live-1`) is a full-duplex voice model. It listens while 
 | iOS      | Supported |
 | Android  | Not yet   |
 
+## Demo
+
+**▶ [Watch the demo on Loom](https://www.loom.com/share/24891dc7c0a74a3c9e3489d80a08f7fd)** (3½ min)
+
+The [example app](example/README.md) running on an iPhone. It opens with talking over the model mid-answer, which GPT-Live handles without any barge-in settings. Then "what time is it?" and "make the background dark blue" run through two `useTool` hooks while the conversation continues. It closes on speaker isolation with someone else talking nearby: with it off, the transcript picks up the other voice, and with it on, only yours.
+
 ## What the API leaves out
 
 GPT-Live makes the conversation itself easy: speech goes up, speech comes back, and the model handles the turn-taking in between. What it gives you is a WebSocket and an audio stream. Building an app on it still means solving:
