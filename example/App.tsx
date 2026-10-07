@@ -92,7 +92,7 @@ function Screen(): React.JSX.Element {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor }]}>
       <StatusBar barStyle="light-content" backgroundColor={backgroundColor} />
-      <Text style={styles.title}>Duplex Voice Agent</Text>
+      <Text style={styles.title}>Switchboard Duplex Voice</Text>
 
       {error ? <Text style={styles.error}>{error.message}</Text> : null}
 
