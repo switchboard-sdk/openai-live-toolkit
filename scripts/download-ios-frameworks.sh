@@ -22,7 +22,7 @@ set -euo pipefail
 SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-release/3.2.8}"
 BASE_URL="s3://switchboard-sdk/builds/${SWITCHBOARD_BUILD}/ios"
 
-PACKAGES=(SwitchboardSDK SwitchboardOpenAI)
+PACKAGES=(SwitchboardSDK SwitchboardOnnx SwitchboardSileroVAD SwitchboardOpenAI)
 if [ "${OPENAI_LIVE_AICOUSTICS:-}" = "1" ]; then
   PACKAGES+=(SwitchboardAICoustics)
 fi

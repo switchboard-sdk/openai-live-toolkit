@@ -173,6 +173,18 @@ describe('session state', () => {
     expect(result.current.connectionStatus).toBe('none')
   })
 
+  it("shows 'idle' while idle mode has the session closed", () => {
+    const { result } = renderProvider({ idleTimeoutMs: 20_000 })
+    expect(toolkit.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ idleTimeoutMs: 20_000 })
+    )
+    emitLive('sessionStarted', { sessionId: 's1' })
+    emitLive('sessionEnded')
+    expect(result.current.connectionStatus).toBe('idle')
+    emitLive('sessionStarting')
+    expect(result.current.connectionStatus).toBe('connecting')
+  })
+
   it("shows 'error' for a fatal session failure until a session comes up", () => {
     const { result } = renderProvider()
     act(() => mockModule.__emitError(new OpenAILiveError('SESSION_FAILED', 'invalid key', true)))

@@ -304,6 +304,7 @@ describe('graph', () => {
       responsesModel: 'gpt-5.5',
       responsesInstructions: expect.stringContaining('never claim an action is done'),
       tools: [],
+      store: false,
     })
   })
 
@@ -589,6 +590,164 @@ describe('session failures are classified by whether a session is up', () => {
     const errors = collect(await running())
     emitEvent('engine-1.liveNode', 'error', {})
     expect(errors[0]!.message).toContain('Session error')
+  })
+})
+
+describe('idle mode', () => {
+  const IDLE = { ...CREDS, idleTimeoutMs: 10_000 }
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
+  })
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  function vad(name: 'speechStarted' | 'speechEnded') {
+    emitEvent('engine-1.vadNode', name)
+  }
+
+  async function live(options: Parameters<OpenAILiveToolkit['initialize']>[0] = IDLE) {
+    const toolkit = await running(options)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    return toolkit
+  }
+
+  it('loads the VAD extensions only when on', () => {
+    initialized(IDLE)
+    expect(commandFor('initialize').params.params.extensions).toMatchObject({
+      Silero: {},
+      Onnx: {},
+    })
+    resetNativeMock()
+    happyPath()
+    initialized()
+    expect(commandFor('initialize').params.params.extensions.Silero).toBeUndefined()
+  })
+
+  it('taps a VAD off the input the model hears and stores sessions', async () => {
+    await running(IDLE)
+    const connections = engineConfig().configuration.graph.connections
+    expect(connections).toContainEqual({
+      sourceNode: 'multiChannelToMonoNode',
+      destinationNode: 'vadSplitterNode',
+    })
+    expect(connections).toContainEqual({
+      sourceNode: 'vadSplitterNode',
+      destinationNode: 'liveNode',
+    })
+    expect(connections).toContainEqual({
+      sourceNode: 'vadSplitterNode',
+      destinationNode: 'vadNode',
+    })
+    expect(graphNodes().find((n) => n.id === 'vadNode').type).toBe('Silero.VAD')
+    expect(liveNodeConfig().store).toBe(true)
+  })
+
+  it('ends the session once nobody has talked for the timeout', async () => {
+    const toolkit = await live()
+    const names: string[] = []
+    toolkit.addEventListener('live', (e) => names.push(e.name))
+    jest.advanceTimersByTime(9_999)
+    expect(commandFor('endSession')).toBeUndefined()
+    jest.advanceTimersByTime(1)
+    expect(commandFor('endSession')).toBeDefined()
+    expect(toolkit.isIdle).toBe(true)
+    expect(names).toEqual(['sessionEnded'])
+  })
+
+  it('counts from the last sign of conversation', async () => {
+    await live()
+    jest.advanceTimersByTime(9_000)
+    emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
+    jest.advanceTimersByTime(9_000)
+    expect(commandFor('endSession')).toBeUndefined()
+    jest.advanceTimersByTime(1_000)
+    expect(commandFor('endSession')).toBeDefined()
+  })
+
+  it('stays up while the user is speaking or a tool is running', async () => {
+    const toolkit = await live()
+    vad('speechStarted')
+    jest.advanceTimersByTime(30_000)
+    expect(commandFor('endSession')).toBeUndefined()
+    vad('speechEnded')
+
+    let finish: (value: unknown) => void = () => {}
+    toolkit.registerTool({
+      name: 't',
+      description: 'T',
+      handler: () => new Promise((r) => (finish = r)),
+    })
+    emitEvent('engine-1.liveNode', 'toolCall', { callId: 'c1', name: 't', argumentsJson: '{}' })
+    jest.advanceTimersByTime(30_000)
+    expect(commandFor('endSession')).toBeUndefined()
+    finish(1)
+    await flush()
+    jest.advanceTimersByTime(10_000)
+    expect(commandFor('endSession')).toBeDefined()
+  })
+
+  it('wakes on speech by forking the last session', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    expect(commandFor('startSession').params.params).toEqual({ forkSessionId: 's1' })
+    expect(toolkit.isIdle).toBe(false)
+  })
+
+  it('starts fresh after the instructions or voice change, which a fork would keep', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    toolkit.setInstructions('Be kind.')
+    vad('speechStarted')
+    expect(commandFor('startSession').params.params).toEqual({})
+  })
+
+  it('does not wake while muted', async () => {
+    const toolkit = await live()
+    toolkit.setMuted(true)
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    expect(commandFor('startSession')).toBeUndefined()
+  })
+
+  it('tells a fork about tools that changed while idle', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    expect(commandsFor('appendInstructions')).toHaveLength(0)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(commandsFor('appendInstructions').map((c) => c.params.params.text)).toEqual([
+      'Your tools changed. ' + toolsNote([{ name: 'a', description: 'A' }]),
+    ])
+  })
+
+  it('treats a refused fork as non-fatal', async () => {
+    const toolkit = await live()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'invalid_request_error',
+      message: 'The stored session was not found.',
+    })
+    expect(errors.map((e) => e.fatal)).toEqual([false])
+  })
+
+  it('stops counting once the engine stops', async () => {
+    const toolkit = await live()
+    toolkit.stop()
+    jest.advanceTimersByTime(10_000)
+    expect(commandFor('endSession')).toBeUndefined()
+  })
+
+  it('never ends the session when off', async () => {
+    await live(CREDS)
+    jest.advanceTimersByTime(600_000)
+    expect(commandFor('endSession')).toBeUndefined()
   })
 })
 

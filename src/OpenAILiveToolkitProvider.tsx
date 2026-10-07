@@ -18,10 +18,16 @@ import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
 
 /**
- * Session connection state. `'error'` means the session was attempted and refused —
- * see {@link OpenAILiveToolkitContextValue.error} for why.
+ * Session connection state. `'idle'` means idle mode closed the session and it reopens
+ * when the user speaks. `'error'` means the session was attempted and refused — see
+ * {@link OpenAILiveToolkitContextValue.error} for why.
  */
-export type OpenAILiveToolkitConnectionStatus = 'none' | 'connecting' | 'connected' | 'error'
+export type OpenAILiveToolkitConnectionStatus =
+  | 'none'
+  | 'connecting'
+  | 'connected'
+  | 'idle'
+  | 'error'
 
 /** Speaker isolation (ai-coustics Quail) controls. */
 export interface SpeakerIsolation {
@@ -125,6 +131,11 @@ export interface OpenAILiveToolkitProviderProps {
   delegateInstructions?: string
   /** Start with speaker isolation on (default true). Also settable via the hook. */
   speakerIsolation?: boolean
+  /**
+   * Close the session after this many ms with nobody talking, and reopen it when the user
+   * speaks, continuing the conversation. Off by default. Fixed once initialized.
+   */
+  idleTimeoutMs?: number
   /** Called for every failure, including non-fatal ones that never reach `error`. */
   onError?: (error: OpenAILiveError) => void
   children?: ReactNode
@@ -146,7 +157,9 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
 
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<OpenAILiveError | null>(null)
-  const [sessionState, setSessionState] = useState<'none' | 'connecting' | 'connected'>('none')
+  const [sessionState, setSessionState] = useState<'none' | 'connecting' | 'connected' | 'idle'>(
+    'none'
+  )
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const entryIdRef = useRef(0)
   // Shift applied to the current session's fragment times, so a new session (whose timeline
@@ -186,6 +199,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       delegateModel: props.delegateModel,
       delegateInstructions: props.delegateInstructions,
       speakerIsolation: isolationEnabled,
+      idleTimeoutMs: props.idleTimeoutMs,
     })
     setIsRunning(toolkit.isRunning)
     setIsolationSupported(toolkit.isSpeakerIsolationSupported)
@@ -206,6 +220,9 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
             timelineOffsetRef.current = nextSessionOffset(entries)
             return entries
           })
+          break
+        case 'sessionEnded':
+          setSessionState('idle')
           break
         case 'sessionClosed': {
           const reason = (e.data as { reason?: string })?.reason

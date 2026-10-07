@@ -7,7 +7,7 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 aicoustics = ENV["OPENAI_LIVE_AICOUSTICS"] == "1"
 
 # Switchboard SDK + extensions, downloaded into ios/Frameworks/ by the script below.
-switchboard_packages = %w[SwitchboardSDK SwitchboardOpenAI]
+switchboard_packages = %w[SwitchboardSDK SwitchboardOnnx SwitchboardSileroVAD SwitchboardOpenAI]
 switchboard_packages << "SwitchboardAICoustics" if aicoustics
 
 # Quail speaker isolation model. The AICoustics node resolves a bare filename

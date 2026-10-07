@@ -7,7 +7,9 @@
 // framework `include/` dirs added to the build's header search paths.
 // AICoustics is opt-in: the podspec defines OPENAI_LIVE_TOOLKIT_AICOUSTICS when
 // it links the extension.
+#include "OnnxExtension.hpp"
 #include "OpenAIExtension.hpp"
+#include "SileroVADExtension.hpp"
 #if OPENAI_LIVE_TOOLKIT_AICOUSTICS
 #include "AICousticsExtension.hpp"
 #endif
@@ -18,6 +20,9 @@ NativeOpenAILiveToolkit::NativeOpenAILiveToolkit(std::shared_ptr<CallInvoker> js
     : NativeOpenAILiveToolkitCxxSpec(std::move(jsInvoker)) {
   // Register extensions with the SDK.
   switchboard::extensions::openai::OpenAIExtension::load();
+  // Silero VAD runs on Onnx; used by idle mode.
+  switchboard::extensions::onnx::OnnxExtension::load();
+  switchboard::extensions::silerovad::SileroVADExtension::load();
 #if OPENAI_LIVE_TOOLKIT_AICOUSTICS
   switchboard::extensions::aicoustics::AICousticsExtension::load();
 #endif

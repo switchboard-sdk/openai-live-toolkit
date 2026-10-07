@@ -17,6 +17,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `delegateModel` | `'gpt-5.5'` | Responses model that runs delegated work and tools. |
 | `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
 | `speakerIsolation` | `true` | Start with Quail on, when it's available. |
+| `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
 ## `useOpenAILiveToolkit()`
@@ -24,7 +25,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | Field | Notes |
 | --- | --- |
 | `isRunning` | Engine started. |
-| `connectionStatus` | `'none' \| 'connecting' \| 'connected' \| 'error'`. `'error'` stays until a session comes up. |
+| `connectionStatus` | `'none' \| 'connecting' \| 'connected' \| 'idle' \| 'error'`. `'idle'`: idle mode closed the session and it reopens on speech. `'error'` stays until a session comes up. |
 | `error` | Outstanding fatal `OpenAILiveError`, or null. |
 | `start()`, `stop()`, `release()` | Start opens a session; stop closes it and keeps the engine; release frees it. |
 | `hasMicrophonePermission`, `requestMicrophonePermission()` | `start()` requests it automatically. |

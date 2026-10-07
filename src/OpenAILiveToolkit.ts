@@ -92,10 +92,19 @@ export interface OpenAILiveToolkitInitializeOptions {
   delegateInstructions?: string
   /** Start with speaker isolation on. Defaults to true. Needs {@link aiCousticsLicenseKey}. */
   speakerIsolation?: boolean
+  /**
+   * Close the session after this many ms with nobody talking, and reopen it when the user
+   * speaks, continuing the conversation. Nothing is billed while it's closed. Off by default.
+   * While on, OpenAI stores each session so the next one can continue it.
+   */
+  idleTimeoutMs?: number
 }
 
-/** The categories of event the toolkit surfaces, one per graph node it listens to. */
-export type OpenAILiveToolkitEventType = 'live'
+/**
+ * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
+ * (speechStarted / speechEnded) is only there in idle mode.
+ */
+export type OpenAILiveToolkitEventType = 'live' | 'vad'
 
 /** A classified Switchboard event. */
 export interface OpenAILiveToolkitEvent {
@@ -157,10 +166,12 @@ interface ToolCall {
 
 const LIVE_NODE = 'liveNode'
 const ISOLATION_NODE = 'speakerIsolationNode'
+const VAD_NODE = 'vadNode'
 
 // The graph's node IDs → event category, used to split the single native event stream.
 const NODE_EVENT_TYPE: Record<string, OpenAILiveToolkitEventType> = {
   [LIVE_NODE]: 'live',
+  [VAD_NODE]: 'vad',
 }
 
 // The graph runs at 48 kHz; Quail wants 16 kHz, so it sits between two resamplers.
@@ -190,7 +201,8 @@ function joinInstructions(...parts: string[]): string {
 /**
  * The Switchboard graph the toolkit runs:
  * microphone → mono → [Quail speaker isolation] → OpenAI.Live → speaker.
- * The model owns turn-taking, so there are no local VAD / turn taps.
+ * The model owns turn-taking. In idle mode a VAD taps the input the model hears, only to
+ * tell when the user starts talking again.
  */
 function buildLiveEngine(
   apiKey: string,
@@ -202,7 +214,8 @@ function buildLiveEngine(
     delegateModel: string
     delegateInstructions: string
   },
-  isolation: { available: boolean; enabled: boolean }
+  isolation: { available: boolean; enabled: boolean },
+  idleMode: boolean
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -234,6 +247,17 @@ function buildLiveEngine(
     )
     chain.push('downResamplerNode', ISOLATION_NODE, 'upResamplerNode')
   }
+  if (idleMode) {
+    nodes.push(
+      { id: 'vadSplitterNode', type: 'Switchboard.BusSplitter' },
+      {
+        id: VAD_NODE,
+        type: 'Silero.VAD',
+        configuration: { threshold: 0.5, minSilenceDurationMs: 500 },
+      }
+    )
+    chain.push('vadSplitterNode')
+  }
   nodes.push(
     {
       id: LIVE_NODE,
@@ -254,11 +278,20 @@ function buildLiveEngine(
           session.delegateInstructions
         ),
         tools,
+        // A closed session can only be continued if OpenAI stored it.
+        store: idleMode,
       },
     },
     { id: 'monoToMultiChannelNode', type: 'Switchboard.MonoToMultiChannel' }
   )
   chain.push(LIVE_NODE, 'monoToMultiChannelNode', 'outputNode')
+  const connections = chain.slice(1).map((destinationNode, i) => ({
+    sourceNode: chain[i],
+    destinationNode,
+  }))
+  if (idleMode) {
+    connections.push({ sourceNode: 'vadSplitterNode', destinationNode: VAD_NODE })
+  }
 
   return {
     type: 'Switchboard.Realtime',
@@ -269,10 +302,7 @@ function buildLiveEngine(
       graph: {
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
         nodes,
-        connections: chain.slice(1).map((destinationNode, i) => ({
-          sourceNode: chain[i],
-          destinationNode,
-        })),
+        connections,
       },
     },
   }
@@ -319,12 +349,25 @@ export function createOpenAILiveToolkit() {
 
   const listeners: Record<OpenAILiveToolkitEventType, Set<OpenAILiveToolkitEventListener>> = {
     live: new Set(),
+    vad: new Set(),
   }
   const errorListeners = new Set<OpenAILiveErrorListener>()
   // Whether a session is currently up. Decides whether a session failure is fatal:
   // one that arrives with no session is what's keeping it down; one during a live
   // session was survivable.
   let sessionLive = false
+
+  // Idle mode. 0 is off.
+  let idleTimeoutMs = 0
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  // The session was closed for idling and reopens when the user speaks.
+  let idle = false
+  // The latest session, which a wake continues. Null makes the next wake start fresh.
+  let lastSessionId: string | null = null
+  // The session coming up is a fork of lastSessionId.
+  let forking = false
+  let userSpeaking = false
+  let toolCallsInFlight = 0
 
   function emitError(
     code: OpenAILiveErrorCode,
@@ -377,6 +420,7 @@ export function createOpenAILiveToolkit() {
     session.delegateModel = options.delegateModel ?? DEFAULT_DELEGATE_MODEL
     session.delegateInstructions = options.delegateInstructions ?? ''
     speakerIsolation = options.speakerIsolation ?? true
+    idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
 
     const c = ensureClient()
     // Native SDK survives JS reloads — skip re-init if already initialized.
@@ -386,6 +430,10 @@ export function createOpenAILiveToolkit() {
       }
       if (isolationAvailable) {
         extensions.AICoustics = { licenseKey }
+      }
+      if (idleTimeoutMs > 0) {
+        extensions.Silero = {}
+        extensions.Onnx = {}
       }
       const res = c.callAction('switchboard', 'initialize', { appID: appId, appSecret, extensions })
       if (res.error) {
@@ -474,10 +522,13 @@ export function createOpenAILiveToolkit() {
       const res = c.callAction(
         'switchboard',
         'createEngine',
-        buildLiveEngine(openAIApiKey, toolDefs(), session, {
-          available: isolationAvailable,
-          enabled: speakerIsolation,
-        })
+        buildLiveEngine(
+          openAIApiKey,
+          toolDefs(),
+          session,
+          { available: isolationAvailable, enabled: speakerIsolation },
+          idleTimeoutMs > 0
+        )
       )
       id = res.result as string
       if (!id) {
@@ -508,6 +559,8 @@ export function createOpenAILiveToolkit() {
    */
   function setInstructions(next: string): void {
     session.instructions = next
+    // A fork keeps the stored session's instructions, so the next wake starts fresh.
+    lastSessionId = null
     if (engineId) {
       lastWrittenToolsNote = toolsNote(toolDefs())
       client?.setValue(LIVE_NODE, 'instructions', liveInstructions())
@@ -558,6 +611,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     session.voice = next
+    lastSessionId = null
     if (engineId) {
       client?.setValue(LIVE_NODE, 'voice', next)
     }
@@ -616,6 +670,16 @@ export function createOpenAILiveToolkit() {
    * to {@link addErrorListener}.
    */
   async function handleToolCall(call: ToolCall): Promise<void> {
+    toolCallsInFlight++
+    try {
+      await runToolCall(call)
+    } finally {
+      toolCallsInFlight--
+      touch()
+    }
+  }
+
+  async function runToolCall(call: ToolCall): Promise<void> {
     const tool = tools.get(call.name)
     let action: 'submitToolResult' | 'submitToolError' = 'submitToolResult'
     let params: Record<string, string>
@@ -658,7 +722,69 @@ export function createOpenAILiveToolkit() {
     }
     running = false
     sessionLive = false
+    resetIdle()
     return null
+  }
+
+  /** (Re)start the idle countdown. Anything that shows the conversation is going calls this. */
+  function touch(): void {
+    if (idleTimeoutMs <= 0 || idle || !running) {
+      return
+    }
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+    }
+    idleTimer = setTimeout(goIdle, idleTimeoutMs)
+  }
+
+  /** Close a session nobody has talked in for {@link idleTimeoutMs}. */
+  function goIdle(): void {
+    idleTimer = null
+    // A session that isn't up bills nothing; the next sessionStarted restarts the countdown.
+    if (!sessionLive) {
+      return
+    }
+    if (userSpeaking || toolCallsInFlight > 0) {
+      touch()
+      return
+    }
+    if (client?.callAction(LIVE_NODE, 'endSession').error) {
+      touch()
+      return
+    }
+    idle = true
+    sessionLive = false
+    // The node reports no sessionClosed for a session it was told to end, so say it here.
+    const event: OpenAILiveToolkitEvent = {
+      type: 'live',
+      name: 'sessionEnded',
+      objectURI: `${engineId}.${LIVE_NODE}`,
+      data: undefined,
+      raw: '',
+    }
+    listeners.live.forEach((l) => l(event))
+  }
+
+  /** The user spoke into an idle session: reopen it, continuing the conversation if there is one. */
+  function wake(): void {
+    // A muted model wouldn't hear them anyway.
+    if (muted) {
+      return
+    }
+    idle = false
+    forking = lastSessionId !== null
+    client?.callAction(LIVE_NODE, 'startSession', forking ? { forkSessionId: lastSessionId } : {})
+  }
+
+  function resetIdle(): void {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+    idle = false
+    forking = false
+    lastSessionId = null
+    userSpeaking = false
   }
 
   /**
@@ -719,19 +845,35 @@ export function createOpenAILiveToolkit() {
       timestamp: e?.timestamp,
       raw,
     }
+    if (type === 'vad') {
+      handleVadEvent(event.name)
+      listeners.vad.forEach((l) => l(event))
+      return
+    }
     switch (event.name) {
       case 'toolCall':
         handleToolCall(event.data as ToolCall)
         break
       case 'sessionStarted':
         sessionLive = true
+        lastSessionId = (event.data as { sessionId?: string } | undefined)?.sessionId || null
         // Every session starts unmuted; carry the app's choice over.
         if (muted) {
           client?.callAction(LIVE_NODE, 'muteInput')
         }
-        // A new session reads the instructions last written to the node; bring its tools note up to date.
-        sessionToolsNote = lastWrittenToolsNote
+        // A new session reads the instructions last written to the node, while a fork knows what
+        // the session it continues was told. Either way, bring its tools note up to date.
+        if (!forking) {
+          sessionToolsNote = lastWrittenToolsNote
+        }
+        forking = false
         syncToolsNote()
+        touch()
+        break
+      case 'inputTranscriptDelta':
+      case 'outputTranscriptDelta':
+      case 'delegationCreated':
+        touch()
         break
       case 'sessionStarting':
       case 'sessionDisconnected':
@@ -739,17 +881,35 @@ export function createOpenAILiveToolkit() {
         sessionLive = false
         break
       case 'error': {
-        const message = (event.data as { message?: string } | undefined)?.message
+        const data = event.data as { type?: string; message?: string } | undefined
+        const message = data?.message
+        // A refused fork isn't fatal: the node starts a new session instead.
+        const forkRefused = forking && data?.type === 'invalid_request_error'
+        if (forkRefused) {
+          forking = false
+        }
         emitError(
           'SESSION_FAILED',
           message?.trim() ? message : `Session error: ${event.raw}`,
-          !sessionLive,
+          !sessionLive && !forkRefused,
           { raw }
         )
         break
       }
     }
     listeners[type].forEach((l) => l(event))
+  }
+
+  function handleVadEvent(name: string): void {
+    if (name === 'speechStarted') {
+      userSpeaking = true
+      if (idle) {
+        wake()
+      }
+    } else if (name === 'speechEnded') {
+      userSpeaking = false
+      touch()
+    }
   }
 
   return {
@@ -772,6 +932,10 @@ export function createOpenAILiveToolkit() {
     /** Whether the engine is started (between {@link start} and {@link stop}). */
     get isRunning(): boolean {
       return running
+    },
+    /** Whether idle mode closed the session; it reopens when the user speaks. */
+    get isIdle(): boolean {
+      return idle
     },
     /** Whether this build links the AICoustics extension. Known after {@link initialize}. */
     get isSpeakerIsolationSupported(): boolean {

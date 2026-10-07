@@ -30,6 +30,8 @@ import { colors } from './colors';
 
 const INSTRUCTIONS =
   'You are a terse, friendly voice assistant. Keep answers to one sentence.';
+// Close the session after this much silence; speaking reopens it.
+const IDLE_TIMEOUT_MS = 15_000;
 
 export default function App(): React.JSX.Element {
   return (
@@ -37,7 +39,8 @@ export default function App(): React.JSX.Element {
       <OpenAILiveToolkitProvider
         openAIApiKey={OPENAI_API_KEY}
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
-        instructions={INSTRUCTIONS}>
+        instructions={INSTRUCTIONS}
+        idleTimeoutMs={IDLE_TIMEOUT_MS}>
         <Screen />
       </OpenAILiveToolkitProvider>
     </SafeAreaProvider>
