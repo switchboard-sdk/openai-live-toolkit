@@ -67,6 +67,7 @@ const emitLive = (name: string, data?: unknown) => act(() => mockModule.__emitLi
 const CREDS = {
   appId: 'app-1',
   appSecret: 'secret-1',
+  transport: 'websocket' as const,
   openAIApiKey: 'sk-1',
   aiCousticsLicenseKey: 'aic-1',
 }

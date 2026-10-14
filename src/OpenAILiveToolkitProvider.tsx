@@ -13,6 +13,7 @@ import {
   type OpenAILiveErrorCode,
   type OpenAILiveToolkit,
   type OpenAILiveToolkitTool,
+  type OpenAILiveTransport,
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
@@ -109,7 +110,12 @@ export interface OpenAILiveToolkitProviderProps {
   appId?: string
   /** Switchboard app secret. Optional, with the same fallback as {@link appId}. */
   appSecret?: string
-  /** OpenAI API key. Required to start: GPT-Live has no ephemeral tokens. */
+  /**
+   * `'webrtc'` (default): the Switchboard backend creates the session with the app's OpenAI key.
+   * `'websocket'`: straight to OpenAI with {@link openAIApiKey}. Fixed once the engine is built.
+   */
+  transport?: OpenAILiveTransport
+  /** OpenAI API key, for the `websocket` transport. */
   openAIApiKey?: string
   /** ai-coustics license key. Speaker isolation needs it and a build with AICoustics. */
   aiCousticsLicenseKey?: string
@@ -132,7 +138,7 @@ export interface OpenAILiveToolkitProviderProps {
 
 /** Initializes the toolkit and exposes its state and controls via {@link useOpenAILiveToolkit}. */
 export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps) {
-  const { appId, appSecret, openAIApiKey, aiCousticsLicenseKey, children } = props
+  const { appId, appSecret, transport, openAIApiKey, aiCousticsLicenseKey, children } = props
   if (appId !== undefined && !appId.trim()) {
     throw new Error('OpenAILiveToolkitProvider: appId is required')
   }
@@ -178,6 +184,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     toolkit.initialize({
       appId,
       appSecret,
+      transport,
       openAIApiKey,
       aiCousticsLicenseKey,
       instructions,
@@ -237,7 +244,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     }
     // Settings are init-only seeds here; runtime changes go through the setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appId, appSecret, openAIApiKey, aiCousticsLicenseKey, reportError])
+  }, [appId, appSecret, transport, openAIApiKey, aiCousticsLicenseKey, reportError])
 
   const requestMicrophonePermission = useCallback(async (): Promise<boolean> => {
     try {

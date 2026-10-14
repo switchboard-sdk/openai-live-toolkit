@@ -21,7 +21,8 @@ Pod::Spec.new do |s|
   s.homepage     = "https://github.com/switchboard-sdk/openai-live-toolkit"
   s.license      = package["license"]
   s.authors      = package["author"]
-  s.platforms    = { :ios => "13.4" }
+  # SwitchboardOpenAI links libwebrtc, which is built for iOS 14.
+  s.platforms    = { :ios => "14.0" }
   s.source       = { :git => "https://github.com/switchboard-sdk/openai-live-toolkit.git", :tag => "v#{s.version}" }
 
   # The shared C++ TurboModule (cpp/) + the iOS provider glue (ios/).

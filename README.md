@@ -17,7 +17,7 @@ The [example app](example/README.md) running on an iPhone. It opens with talking
 
 ## What the API leaves out
 
-GPT-Live makes the conversation itself easy: speech goes up, speech comes back, and the model handles the turn-taking in between. What it gives you is a WebSocket and an audio stream. Building an app on it still means solving:
+GPT-Live makes the conversation itself easy: speech goes up, speech comes back, and the model handles the turn-taking in between. What it gives you is a connection and an audio stream. Building an app on it still means solving:
 
 - **Capture and playback.** Pulling audio off the microphone and playing the reply through the right audio route, at matching sample rates, in real time. The model streams audio continuously, silence included, so playback has to keep pace.
 - **The microphone hearing the speaker.** A full-duplex model never stops listening. On speakerphone it hears its own voice the whole time it talks, unless acoustic echo cancellation removes it first.
@@ -41,9 +41,7 @@ import {
 
 export default function App() {
     return (
-        <OpenAILiveToolkitProvider
-            openAIApiKey={OPENAI_API_KEY}
-            instructions="You are a terse, friendly voice assistant.">
+        <OpenAILiveToolkitProvider instructions="You are a terse, friendly voice assistant.">
             <Screen />
         </OpenAILiveToolkitProvider>
     )
@@ -94,10 +92,11 @@ Speaker isolation is optional. It needs an ai-coustics license key and the AICou
 
 ## Before you ship
 
-- **The OpenAI key is in the app.** GPT-Live accepts only a real API key, with no ephemeral tokens yet, so it ends up in the binary. Don't give builds to people you wouldn't give the key to.
-- **Private Switchboard builds.** The `OpenAI.Live` node isn't in a public Switchboard release yet, so `pod install` fetches a build from `s3://switchboard-sdk` and needs AWS credentials that can read it.
+- **The OpenAI key stays on the backend.** By default the session runs over WebRTC, and the Switchboard backend creates it with your Switchboard app's OpenAI key, so the app ships without one. The `websocket` transport needs the key in the app.
+- **Private Switchboard builds.** The `OpenAI.Live` node isn't in a public Switchboard release yet, so `pod install` fetches a build from `s3://switchboard-sdk` and needs AWS credentials that can read it. The WebRTC transport isn't in S3 yet either; see [Getting started](docs/getting-started.md#install) for using a local SDK build.
 - **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends.
-- **Physical device with AICoustics.** Its framework has no simulator slice. Everything else runs in the simulator.
+- **iOS 14.** The WebRTC transport needs it.
+- **Physical device with AICoustics.** Its framework has no simulator slice. Everything else runs in the simulator on Apple silicon Macs.
 
 ## Documentation
 

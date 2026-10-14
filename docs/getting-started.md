@@ -23,6 +23,18 @@ SWITCHBOARD_BUILD=release/3.2.9 bundle exec pod install
 
 Downloads are skipped when the requested build is already present. CocoaPods only runs the script when it first installs the pod, so after changing `SWITCHBOARD_BUILD` run it directly with `npm run ios:frameworks` (from the toolkit checkout), then `pod install`.
 
+The WebRTC transport needs a Switchboard SDK build that isn't in S3 yet. Build the frameworks from a `switchboard-sdk` checkout and point `SWITCHBOARD_LOCAL_BUILD` at its `out/` directory; packages found there are copied instead of downloaded:
+
+```sh
+# in switchboard-sdk
+inv sdk.build-ios --clean && inv openai.build-ios && inv aicoustics.build-ios
+
+# in the toolkit checkout
+SWITCHBOARD_LOCAL_BUILD=/path/to/switchboard-sdk/out OPENAI_LIVE_AICOUSTICS=1 npm run ios:frameworks
+```
+
+`--clean` is needed when the last build in that checkout was an extension, which leaves the SDK target out of the CMake cache.
+
 ## Speaker isolation
 
 Speaker isolation is optional and off by default. It needs two things:
@@ -41,21 +53,27 @@ With both, `speakerIsolation.available` is true and Quail sits in front of the m
 
 ## iOS setup
 
+- **iOS 14 or later.** `SwitchboardOpenAI` links libwebrtc, which is built for iOS 14.
 - **Microphone string.** Add `NSMicrophoneUsageDescription` to `Info.plist`.
 - **Background audio.** To keep a conversation going with the screen locked or the app in the background, add `audio` to `UIBackgroundModes`. Without it iOS suspends the app, the connection drops, and a new session starts when the app returns. The session keeps billing while backgrounded, so stop the engine when the conversation ends.
-- **Simulator.** Works without AICoustics. With it linked, build for a physical iPhone: the AICoustics xcframework has no simulator slice.
+- **Simulator.** Works without AICoustics, on Apple silicon Macs only: `SwitchboardOpenAI` has no x86_64 simulator slice. With AICoustics linked, build for a physical iPhone: its xcframework has no simulator slice.
 - **New architecture.** The toolkit is a C++ TurboModule; the app must run with the new architecture (the RN default).
 - **Privacy manifest.** The pod ships one declaring the file-timestamp API the frameworks use; it's merged into the app's privacy report automatically.
 
 ## Credentials
 
-Pass them to the provider:
+The session reaches GPT-Live over one of two transports, set with the provider's `transport` prop:
+
+- **`webrtc`** (default). The SDK sends its WebRTC offer to the Switchboard backend, which creates the session with the Switchboard app's OpenAI key and returns OpenAI's answer. Audio and events then go straight between the phone and OpenAI. The app holds no OpenAI key, but the Switchboard app needs one configured on the backend.
+- **`websocket`**. Connects straight to OpenAI with `openAIApiKey`.
+
+Pass the credentials to the provider:
 
 | Prop | Required | Notes |
 | --- | --- | --- |
-| `openAIApiKey` | yes | GPT-Live accepts only a real key. `start()` fails with `MISSING_API_KEY` without one. |
-| `aiCousticsLicenseKey` | no | Enables speaker isolation in a build that links AICoustics. Without either the graph has no Quail node. |
 | `appId`, `appSecret` | no | Switchboard credentials. Fall back to shared defaults. |
+| `openAIApiKey` | with `websocket` | `start()` fails with `MISSING_API_KEY` without one. Ignored with `webrtc`. |
+| `aiCousticsLicenseKey` | no | Enables speaker isolation in a build that links AICoustics. Without either the graph has no Quail node. |
 
 Keep keys out of source. The example app reads them from `example/.env` with `react-native-dotenv`.
 
