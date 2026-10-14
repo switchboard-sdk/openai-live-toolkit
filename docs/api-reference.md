@@ -8,7 +8,8 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 
 | Prop | Default | Notes |
 | --- | --- | --- |
-| `openAIApiKey` | — | Required to start. |
+| `transport` | `'webrtc'` | `'webrtc'`: the Switchboard backend creates the session with the app's OpenAI key. `'websocket'`: straight to OpenAI with `openAIApiKey`. Fixed once the engine is built. See [Credentials](getting-started.md#credentials). |
+| `openAIApiKey` | — | Required to start with `'websocket'`. Ignored with `'webrtc'`. |
 | `aiCousticsLicenseKey` | — | Enables speaker isolation in a build that links AICoustics. |
 | `appId`, `appSecret` | shared defaults | Switchboard credentials. A blank string throws. |
 | `instructions` | `''` | System prompt. |
@@ -54,7 +55,7 @@ Every failure is an `OpenAILiveError` with a `code`, a `message` and `fatal`. Fa
 | --- | --- | --- |
 | `INIT_FAILED` | yes | The SDK refused to initialize. |
 | `NOT_INITIALIZED` | yes | `start()` before the SDK came up. |
-| `MISSING_API_KEY` | yes | No OpenAI key. |
+| `MISSING_API_KEY` | yes | No OpenAI key with the `websocket` transport. |
 | `MIC_PERMISSION_DENIED` | yes | The user denied the microphone. |
 | `ENGINE_CREATION_FAILED` | yes | The graph couldn't be built. |
 | `ENGINE_START_FAILED` | yes | The engine refused to start. |

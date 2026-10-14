@@ -25,7 +25,7 @@ import {
   useOpenAILiveToolkit,
   useTool,
 } from '@synervoz/openai-live-toolkit';
-import { OPENAI_API_KEY, AIC_LICENSE_KEY } from '@env';
+import { AIC_LICENSE_KEY } from '@env';
 import { colors } from './colors';
 
 const INSTRUCTIONS =
@@ -37,7 +37,6 @@ export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <OpenAILiveToolkitProvider
-        openAIApiKey={OPENAI_API_KEY}
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
         instructions={INSTRUCTIONS}
         idleTimeoutMs={IDLE_TIMEOUT_MS}>
