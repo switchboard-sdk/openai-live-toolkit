@@ -94,7 +94,7 @@ Speaker isolation is optional. It needs an ai-coustics license key and the AICou
 
 - **The OpenAI key stays on the backend.** By default the session runs over WebRTC, and the Switchboard backend creates it with your Switchboard app's OpenAI key, so the app ships without one. The `websocket` transport needs the key in the app.
 - **Private Switchboard builds.** The `OpenAI.Live` node isn't in a public Switchboard release yet, so `pod install` fetches a build from `s3://switchboard-sdk` and needs AWS credentials that can read it. The WebRTC transport isn't in S3 yet either; see [Getting started](docs/getting-started.md#install) for using a local SDK build.
-- **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends.
+- **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends, or set `idleTimeoutMs` to close the session during silences and reopen it when the user speaks ([Idle mode](docs/getting-started.md#idle-mode)).
 - **iOS 14.** The WebRTC transport needs it.
 - **Physical device with AICoustics.** Its framework has no simulator slice. Everything else runs in the simulator on Apple silicon Macs.
 
