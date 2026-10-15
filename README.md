@@ -7,7 +7,7 @@ OpenAI's GPT-Live (`gpt-live-1`) is a full-duplex voice model. It listens while 
 | Platform | Status    |
 | -------- | --------- |
 | iOS      | Supported |
-| Android  | Not yet   |
+| Android  | Supported |
 
 ## Demo
 
@@ -84,7 +84,7 @@ const { speakerIsolation } = useOpenAILiveToolkit()
 speakerIsolation.setEnabled(true)
 ```
 
-Speaker isolation is optional. It needs an ai-coustics license key and the AICoustics Switchboard extension, which isn't published yet. Without it the graph runs `mic → mono → OpenAI.Live → speaker` and `speakerIsolation.available` is false. See [Getting started](docs/getting-started.md#speaker-isolation).
+Speaker isolation is optional and iOS only. It needs an ai-coustics license key and the AICoustics Switchboard extension, which isn't published yet and has no Android build. Without it the graph runs `mic → mono → OpenAI.Live → speaker` and `speakerIsolation.available` is false. See [Getting started](docs/getting-started.md#speaker-isolation).
 
 ## Tools
 
@@ -93,14 +93,14 @@ Speaker isolation is optional. It needs an ai-coustics license key and the AICou
 ## Before you ship
 
 - **The OpenAI key stays on the backend.** By default the session runs over WebRTC, and the Switchboard backend creates it with your Switchboard app's OpenAI key, so the app ships without one. The `websocket` transport needs the key in the app.
-- **Private Switchboard builds.** The `OpenAI.Live` node isn't in a public Switchboard release yet, so `pod install` fetches a build from `s3://switchboard-sdk` and needs AWS credentials that can read it. The WebRTC transport isn't in S3 yet either; see [Getting started](docs/getting-started.md#install) for using a local SDK build.
+- **Private Switchboard builds.** The `OpenAI.Live` node isn't in a public Switchboard release yet, so `pod install` and the first Android build fetch a build from `s3://switchboard-sdk` and need AWS credentials that can read it. The WebRTC transport isn't in S3 yet either; see [Getting started](docs/getting-started.md#install) for using a local SDK build.
 - **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends.
-- **iOS 14.** The WebRTC transport needs it.
+- **iOS 14.** The WebRTC transport needs it. Android needs API 24 and an app built with NDK 29 ([Android setup](docs/getting-started.md#android-setup)).
 - **Physical device with AICoustics.** Its framework has no simulator slice. Everything else runs in the simulator on Apple silicon Macs.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md) covers install, frameworks, speaker isolation, iOS setup, and credentials.
+- [Getting started](docs/getting-started.md) covers install, frameworks, speaker isolation, iOS and Android setup, and credentials.
 - [Tools](docs/tools.md) covers `useTool`, delegation, dynamic tool sets, and tool errors.
 - [API reference](docs/api-reference.md) covers the provider, the `useOpenAILiveToolkit()` hook, every export, and the error codes.
 - [Example app](example/README.md) is a complete screen with a transcript, the isolation toggle, and two tools.

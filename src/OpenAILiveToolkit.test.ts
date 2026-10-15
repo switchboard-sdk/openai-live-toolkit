@@ -1,5 +1,6 @@
 jest.mock('./NativeOpenAILiveToolkit')
 
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native'
 import {
   createOpenAILiveToolkit,
   OpenAILiveError,
@@ -675,5 +676,84 @@ describe('requestMicrophonePermission', () => {
   it('delegates to the native module', async () => {
     native.requestMicrophonePermission.mockResolvedValue(true)
     await expect(createOpenAILiveToolkit().requestMicrophonePermission()).resolves.toBe(true)
+  })
+})
+
+describe('Android', () => {
+  const originalOS = Platform.OS
+  let audioSession: { startAudioSession: jest.Mock; stopAudioSession: jest.Mock }
+  let permission: jest.SpyInstance
+
+  beforeEach(() => {
+    Platform.OS = 'android'
+    audioSession = {
+      startAudioSession: jest.fn().mockResolvedValue(undefined),
+      stopAudioSession: jest.fn().mockResolvedValue(undefined),
+    }
+    NativeModules.OpenAILiveToolkitAndroid = audioSession
+    permission = jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED)
+  })
+
+  afterEach(() => {
+    Platform.OS = originalOS
+    delete NativeModules.OpenAILiveToolkitAndroid
+    permission.mockRestore()
+  })
+
+  it('asks for RECORD_AUDIO through PermissionsAndroid', async () => {
+    await running()
+    expect(permission).toHaveBeenCalledWith(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
+    expect(native.requestMicrophonePermission).not.toHaveBeenCalled()
+  })
+
+  it('throws when RECORD_AUDIO is denied', async () => {
+    permission.mockResolvedValue(PermissionsAndroid.RESULTS.DENIED)
+    await expect(initialized().start()).rejects.toMatchObject({ code: 'MIC_PERMISSION_DENIED' })
+    expect(audioSession.startAudioSession).not.toHaveBeenCalled()
+  })
+
+  it('opens the mic and speaker for voice communication', async () => {
+    await running()
+    const configuration = engineConfig().configuration
+    expect(configuration.inputPreset).toBe('VOICE_COMMUNICATION')
+    expect(configuration.outputUsage).toBe('USAGE_VOICE_COMMUNICATION')
+    expect(configuration.voiceProcessingEnabled).toBeUndefined()
+  })
+
+  it('starts the audio session before the engine and stops it after', async () => {
+    audioSession.startAudioSession.mockImplementation(async () => {
+      expect(commandsFor('start')).toHaveLength(0)
+    })
+    const toolkit = await running()
+    expect(audioSession.startAudioSession).toHaveBeenCalledTimes(1)
+    expect(audioSession.stopAudioSession).not.toHaveBeenCalled()
+    toolkit.stop()
+    expect(audioSession.stopAudioSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts the engine when the audio session fails', async () => {
+    audioSession.startAudioSession.mockRejectedValue(new Error('no route'))
+    const toolkit = await running()
+    expect(toolkit.isRunning).toBe(true)
+  })
+
+  it('stops the audio session when the engine refuses to start', async () => {
+    scriptNative((req) => {
+      if (req.params?.actionName === 'createEngine') return makeRpcResponse('engine-1')
+      if (req.params?.actionName === 'start')
+        return makeRpcResponse(undefined, { code: -1, message: 'mic busy' })
+      return makeRpcResponse(null)
+    })
+    await expect(initialized().start()).rejects.toMatchObject({ code: 'ENGINE_START_FAILED' })
+    expect(audioSession.stopAudioSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the audio session when the engine refuses to stop', async () => {
+    const toolkit = await running()
+    scriptNative(() => makeRpcResponse(undefined, { code: -1, message: 'nope' }))
+    expect(() => toolkit.stop()).toThrow(OpenAILiveError)
+    expect(audioSession.stopAudioSession).not.toHaveBeenCalled()
   })
 })

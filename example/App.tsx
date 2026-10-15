@@ -11,6 +11,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -109,8 +110,10 @@ function Screen(): React.JSX.Element {
           <Text style={styles.hint}>
             {speakerIsolation.supported
               ? 'Needs an ai-coustics license key. Set AIC_LICENSE_KEY in .env.'
-              : 'Needs the AICoustics extension and an ai-coustics license key. ' +
-                'See the example README.'}
+              : Platform.OS === 'android'
+                ? 'Not available on Android yet.'
+                : 'Needs the AICoustics extension and an ai-coustics license key. ' +
+                  'See the example README.'}
           </Text>
         )}
         <View style={styles.toggleRow}>

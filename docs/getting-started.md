@@ -9,6 +9,8 @@ npm install /path/to/synervoz-openai-live-toolkit-0.1.0.tgz
 cd ios && bundle exec pod install
 ```
 
+On Android the first Gradle build fetches the libraries instead; see [Android setup](#android-setup).
+
 `pod install` runs `scripts/download-ios-frameworks.sh`, which pulls `SwitchboardSDK` and `SwitchboardOpenAI` into `ios/Frameworks/` with the AWS CLI. It needs credentials that can read `s3://switchboard-sdk`:
 
 ```sh
@@ -60,6 +62,53 @@ With both, `speakerIsolation.available` is true and Quail sits in front of the m
 - **New architecture.** The toolkit is a C++ TurboModule; the app must run with the new architecture (the RN default).
 - **Privacy manifest.** The pod ships one declaring the file-timestamp API the frameworks use; it's merged into the app's privacy report automatically.
 
+## Android setup
+
+The C++ TurboModule is compiled in the app's native build and links the Switchboard AARs through Prefab. The first Gradle build runs `scripts/download-android-libraries.sh`, which pulls `SwitchboardSDK` and `SwitchboardOpenAI` into the toolkit's `android/libs/`. It takes the same S3 access, `SWITCHBOARD_BUILD` and `SWITCHBOARD_LOCAL_BUILD` as the iOS script. Later builds reuse the AARs, so after changing either variable run `npm run android:libraries` from the toolkit checkout.
+
+The WebRTC transport needs a local SDK build here too:
+
+```sh
+# in switchboard-sdk
+inv sdk.build-android && inv openai.build-android
+
+# in the toolkit checkout
+SWITCHBOARD_LOCAL_BUILD=/path/to/switchboard-sdk/out npm run android:libraries
+```
+
+The app needs three changes:
+
+1. **Prefab**, in `android/app/build.gradle`:
+
+   ```groovy
+   android {
+       buildFeatures {
+           prefab true
+       }
+   }
+   ```
+
+2. **NDK 29**, in the `buildscript { ext { … } }` block of the root `android/build.gradle`. The React Native template's 27.x builds, but the app fails at launch with `cannot locate symbol "__cxa_init_primary_exception"`:
+
+   ```groovy
+   ndkVersion = "29.0.14206865"
+   ```
+
+3. **No 32-bit x86**, in `android/gradle.properties`. The AARs ship `arm64-v8a`, `armeabi-v7a` and `x86_64`:
+
+   ```properties
+   reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64
+   ```
+
+The rest comes with the library:
+
+- **Permissions.** `RECORD_AUDIO`, `INTERNET`, `MODIFY_AUDIO_SETTINGS` and the microphone foreground service merge in from its manifest. `start()` asks for the microphone.
+- **Background.** While the engine runs, a microphone foreground service with an ongoing notification keeps the conversation going with the screen locked or another app in front. Swiping the app away stops it. The session keeps billing meanwhile, so stop the engine when the conversation ends.
+- **Echo cancellation.** The mic and speaker open for voice communication and the audio mode switches to communication, routed to a connected headset, else the loudspeaker. Playback follows the in-call volume, which the volume keys control during a conversation. The canceller is the device's, so how well it works varies by phone.
+- **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
+
+The emulator works for arm64 and x86_64 images.
+
 ## Credentials
 
 The session reaches GPT-Live over one of two transports, set with the provider's `transport` prop:
@@ -85,4 +134,4 @@ mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → speak
 
 Without speaker isolation the resamplers and Quail are left out: `mic → mono → OpenAI.Live → speaker`.
 
-The engine runs at 48 kHz with platform echo cancellation (`voiceProcessingEnabled`). The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session.
+The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session.

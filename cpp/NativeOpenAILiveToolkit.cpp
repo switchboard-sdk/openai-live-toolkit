@@ -48,7 +48,7 @@ AsyncPromise<bool> NativeOpenAILiveToolkit::requestMicrophonePermission(jsi::Run
     // resolve() hops back to the JS thread; the completion may fire on any thread.
     s_micPermissionHook([promise](bool granted) mutable { promise.resolve(granted); });
   } else {
-    // No hook (tests): nothing to ask.
+    // No hook (Android asks from JS, tests): nothing to ask.
     promise.resolve(true);
   }
   return promise;

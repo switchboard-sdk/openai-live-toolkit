@@ -1,4 +1,6 @@
+import { PermissionsAndroid, Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
+import { androidModule } from './androidModule'
 import { NativeModuleRPCClient } from './NativeModuleRPCClient'
 import { SwitchboardClient } from './SwitchboardClient'
 import { DEFAULT_DELEGATE_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
@@ -274,8 +276,12 @@ function buildLiveEngine(
     type: 'Switchboard.Realtime',
     configuration: {
       microphoneEnabled: true,
-      // Platform echo cancellation: the model listens while it speaks.
-      voiceProcessingEnabled: true,
+      // Platform echo cancellation: the model listens while it speaks. On Android the
+      // voice-communication input and output pair with the communication mode set on
+      // start; the output usage also puts playback on the in-call volume the keys control.
+      ...(Platform.OS === 'android'
+        ? { inputPreset: 'VOICE_COMMUNICATION', outputUsage: 'USAGE_VOICE_COMMUNICATION' }
+        : { voiceProcessingEnabled: true }),
       graph: {
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
         nodes,
@@ -381,7 +387,9 @@ export function createOpenAILiveToolkit() {
     if (!isolationSupported && licenseKey !== '') {
       console.warn(
         '[OpenAILiveToolkit] aiCousticsLicenseKey ignored: this build has no AICoustics extension. ' +
-          'Reinstall pods with OPENAI_LIVE_AICOUSTICS=1 to enable speaker isolation.'
+          (Platform.OS === 'android'
+            ? 'There is no Android build of it yet.'
+            : 'Reinstall pods with OPENAI_LIVE_AICOUSTICS=1 to enable speaker isolation.')
       )
     } else if (isolationSupported && licenseKey === '') {
       console.warn(
@@ -450,8 +458,30 @@ export function createOpenAILiveToolkit() {
   }
 
   /** Request microphone permission; resolves to whether it's granted. Called by {@link start}. */
-  function requestMicrophonePermission(): Promise<boolean> {
+  async function requestMicrophonePermission(): Promise<boolean> {
+    if (Platform.OS === 'android') {
+      const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
+      return result === PermissionsAndroid.RESULTS.GRANTED
+    }
     return NativeOpenAILiveToolkit.requestMicrophonePermission()
+  }
+
+  /**
+   * Android: hold the foreground service and the communication route while the engine runs.
+   * Best-effort: without them the conversation still runs in the foreground, with weaker AEC.
+   */
+  async function startAndroidAudioSession(): Promise<void> {
+    try {
+      await androidModule()?.startAudioSession()
+    } catch {
+      // Carry on without it.
+    }
+  }
+
+  function stopAndroidAudioSession(): void {
+    androidModule()
+      ?.stopAudioSession()
+      .catch(() => {})
   }
 
   /**
@@ -508,8 +538,15 @@ export function createOpenAILiveToolkit() {
       engineId = id
     }
 
+    // Before the streams open, so AEC engages on the loudspeaker.
+    if (Platform.OS === 'android') {
+      await startAndroidAudioSession()
+    }
     const startRes = c.callAction(id, 'start')
     if (startRes.error) {
+      if (Platform.OS === 'android') {
+        stopAndroidAudioSession()
+      }
       throw new OpenAILiveError(
         'ENGINE_START_FAILED',
         `Engine start failed: ${startRes.error.message}`,
@@ -672,6 +709,10 @@ export function createOpenAILiveToolkit() {
       const res = client.callAction(engineId, 'stop')
       if (res.error) {
         return res.error.message ?? 'unknown error'
+      }
+      // Only once the graph is down: while it runs, the communication route keeps AEC engaged.
+      if (Platform.OS === 'android') {
+        stopAndroidAudioSession()
       }
     }
     running = false

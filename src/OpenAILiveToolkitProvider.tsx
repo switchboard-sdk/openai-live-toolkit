@@ -26,7 +26,7 @@ export type OpenAILiveToolkitConnectionStatus = 'none' | 'connecting' | 'connect
 
 /** Speaker isolation (ai-coustics Quail) controls. */
 export interface SpeakerIsolation {
-  /** Whether this build links the AICoustics extension (opt-in at `pod install`). */
+  /** Whether this build links the AICoustics extension (opt-in at `pod install`; iOS only). */
   supported: boolean
   /** Whether the graph has speaker isolation: `supported` and a license key was given. */
   available: boolean

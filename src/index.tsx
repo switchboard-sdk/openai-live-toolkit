@@ -1,7 +1,9 @@
+import { Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
+import { androidModule } from './androidModule'
 
 /**
- * OpenAILiveToolkit — full-duplex OpenAI GPT-Live voice agents on iOS, with
+ * OpenAILiveToolkit — full-duplex OpenAI GPT-Live voice agents on iOS and Android, with
  * optional ai-coustics speaker isolation, powered by the Switchboard SDK.
  *
  * Wrap your app in {@link OpenAILiveToolkitProvider} and drive it with the hooks below;
@@ -28,6 +30,9 @@ export type { OpenAIVoice } from './voice'
 
 /** Absolute path to the app's documents directory (for recordings/logs). */
 export function getDocumentsPath(): string {
+  if (Platform.OS === 'android') {
+    return androidModule()?.getConstants().documentsPath ?? ''
+  }
   return NativeOpenAILiveToolkit.getDocumentsPath()
 }
 
