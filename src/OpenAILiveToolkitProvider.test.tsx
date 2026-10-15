@@ -96,6 +96,7 @@ beforeEach(() => {
 describe('initialization', () => {
   it('initializes the engine with credentials and seeds', () => {
     renderProvider({
+      apiUrl: 'https://staging.api.switchboard.audio',
       instructions: 'Be terse.',
       voice: 'cedar',
       speakerIsolation: false,
@@ -104,6 +105,7 @@ describe('initialization', () => {
     expect(toolkit.initialize).toHaveBeenCalledWith(
       expect.objectContaining({
         ...CREDS,
+        apiUrl: 'https://staging.api.switchboard.audio',
         instructions: 'Be terse.',
         voice: 'cedar',
         model: 'gpt-live-1',

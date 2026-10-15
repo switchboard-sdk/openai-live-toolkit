@@ -1,0 +1,173 @@
+package com.synervoz.openailivetoolkit
+
+import android.content.Context
+import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import androidx.annotation.RequiresApi
+import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * Android platform glue for the C++ TurboModule, called from OpenAILiveToolkit.ts.
+ *
+ * While the engine runs it holds the audio session: a microphone foreground service so
+ * the conversation survives the screen locking, and MODE_IN_COMMUNICATION (engages the
+ * hardware AEC — Samsung keeps it off otherwise) routed to a connected headset, else the
+ * built-in loudspeaker (never the earpiece). The route is fixed at start.
+ */
+class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationContext) :
+  ReactContextBaseJavaModule(reactContext) {
+
+  override fun getName() = NAME
+
+  override fun getConstants(): Map<String, Any> =
+    mapOf("documentsPath" to reactContext.filesDir.absolutePath)
+
+  private val audioManager: AudioManager
+    get() = reactContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+  /** Start the foreground service and the communication route. Call with the mic granted. */
+  @ReactMethod
+  fun startAudioSession(promise: Promise) {
+    try {
+      val context = reactContext.applicationContext
+      val intent = Intent(context, OpenAILiveToolkitService::class.java)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+      } else {
+        context.startService(intent)
+      }
+      enableCommunicationRoute(promise)
+    } catch (e: Exception) {
+      promise.reject("audio_session_error", e)
+    }
+  }
+
+  /** Restore the normal audio mode and route, and stop the foreground service. */
+  @ReactMethod
+  fun stopAudioSession(promise: Promise) {
+    try {
+      disableCommunicationRoute()
+      val context = reactContext.applicationContext
+      context.stopService(Intent(context, OpenAILiveToolkitService::class.java))
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("audio_session_error", e)
+    }
+  }
+
+  /** Enter communication mode; route to a connected headset if present, else the loudspeaker. */
+  private fun enableCommunicationRoute(promise: Promise) {
+    val am = audioManager
+    am.mode = AudioManager.MODE_IN_COMMUNICATION
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      routeLegacy(am)
+      promise.resolve(null)
+      return
+    }
+    val devices = am.availableCommunicationDevices
+    val headset = PREFERRED_HEADSET_TYPES.firstNotNullOfOrNull { type ->
+      devices.firstOrNull { it.type == type }
+    }
+    if (headset != null) {
+      selectDeviceAndWait(am, headset, promise)
+      return
+    }
+    devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+      ?.let { am.setCommunicationDevice(it) }
+    promise.resolve(null)
+  }
+
+  /**
+   * Select [device] and resolve only once the route is active (or times out).
+   * Bluetooth SCO connects asynchronously — resolving early would let the engine
+   * open its mic stream before capture is ready and silence it.
+   */
+  @RequiresApi(Build.VERSION_CODES.S)
+  private fun selectDeviceAndWait(am: AudioManager, device: AudioDeviceInfo, promise: Promise) {
+    if (am.communicationDevice?.id == device.id) {
+      promise.resolve(null)
+      return
+    }
+    val done = AtomicBoolean(false)
+    val holder = arrayOfNulls<AudioManager.OnCommunicationDeviceChangedListener>(1)
+    fun finish() {
+      if (done.compareAndSet(false, true)) {
+        holder[0]?.let { am.removeOnCommunicationDeviceChangedListener(it) }
+        promise.resolve(null)
+      }
+    }
+    val listener = AudioManager.OnCommunicationDeviceChangedListener { active ->
+      if (active?.id == device.id) finish()
+    }
+    holder[0] = listener
+    am.addOnCommunicationDeviceChangedListener(Executor { it.run() }, listener)
+    if (!am.setCommunicationDevice(device)) {
+      finish()
+      return
+    }
+    // SCO can take a couple of seconds; don't block start forever.
+    Handler(Looper.getMainLooper()).postDelayed({ finish() }, ROUTE_TIMEOUT_MS)
+  }
+
+  private fun disableCommunicationRoute() {
+    val am = audioManager
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      am.clearCommunicationDevice()
+    } else {
+      @Suppress("DEPRECATION")
+      run {
+        am.stopBluetoothSco()
+        am.isBluetoothScoOn = false
+        am.isSpeakerphoneOn = false
+      }
+    }
+    am.mode = AudioManager.MODE_NORMAL
+  }
+
+  /** Pre-API-31 routing: Bluetooth SCO > wired/USB headset > loudspeaker. */
+  @Suppress("DEPRECATION")
+  private fun routeLegacy(am: AudioManager) {
+    val outputs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+    val hasBluetooth = outputs.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+    val hasWired = outputs.any {
+      it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+        it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+        it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+    }
+    when {
+      hasBluetooth -> {
+        // SCO connects asynchronously; best-effort on legacy devices.
+        am.startBluetoothSco()
+        am.isBluetoothScoOn = true
+        am.isSpeakerphoneOn = false
+      }
+      // Wired/USB routes automatically in comm mode; just don't force speaker.
+      hasWired -> am.isSpeakerphoneOn = false
+      else -> am.isSpeakerphoneOn = true
+    }
+  }
+
+  companion object {
+    const val NAME = "OpenAILiveToolkitAndroid"
+
+    private const val ROUTE_TIMEOUT_MS = 3000L
+
+    // Headset output types, most-preferred first.
+    private val PREFERRED_HEADSET_TYPES = listOf(
+      AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+      AudioDeviceInfo.TYPE_BLE_HEADSET,
+      AudioDeviceInfo.TYPE_WIRED_HEADSET,
+      AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+      AudioDeviceInfo.TYPE_USB_HEADSET,
+    )
+  }
+}

@@ -12,6 +12,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `openAIApiKey` | — | Required to start with `'websocket'`. Ignored with `'webrtc'`. |
 | `aiCousticsLicenseKey` | — | Enables speaker isolation in a build that links AICoustics. |
 | `appId`, `appSecret` | shared defaults | Switchboard credentials. A blank string throws. |
+| `apiUrl` | production | Switchboard backend, e.g. `https://staging.api.switchboard.audio`. The SDK only accepts `https://<host>.switchboard.audio`. |
 | `instructions` | `''` | System prompt. |
 | `voice` | `'marin'` | See `VOICES`. |
 | `model` | `'gpt-live-1'` | Fixed once the engine is built. |
