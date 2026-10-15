@@ -6,7 +6,7 @@ A GPT-Live voice assistant screen: start/stop, an optional speaker isolation tog
 
 Needs Node 22+ and AWS credentials that can read `s3://switchboard-sdk` (see [Getting started](../docs/getting-started.md)). iOS needs Ruby 3.1+ with Bundler and Xcode; Android needs JDK 17 and the Android SDK with NDK 29.0.14206865.
 
-The app uses the shared Switchboard credentials and the WebRTC transport, so it needs no OpenAI key: the Switchboard backend creates the session.
+The app uses the shared Switchboard credentials and the WebRTC transport, so it needs no OpenAI key: the Switchboard backend creates the session. To use another app or backend, such as staging, set `SWITCHBOARD_APP_ID`, `SWITCHBOARD_APP_SECRET` and `SWITCHBOARD_API_URL` in `.env`, then restart Metro with `npm start -- --reset-cache` so it picks them up.
 
 ```sh
 cp .env.example .env

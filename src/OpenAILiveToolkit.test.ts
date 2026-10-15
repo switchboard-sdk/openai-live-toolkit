@@ -118,6 +118,18 @@ describe('initialize', () => {
     expect(params.extensions).toEqual({ OpenAI: {} })
   })
 
+  it('leaves apiURL to the SDK unless one is given', () => {
+    initialized({ ...CREDS, apiUrl: ' ' })
+    expect(commandFor('initialize').params.params.apiURL).toBeUndefined()
+  })
+
+  it('sends the Switchboard backend URL when given', () => {
+    initialized({ ...CREDS, apiUrl: 'https://staging.api.switchboard.audio' })
+    expect(commandFor('initialize').params.params.apiURL).toBe(
+      'https://staging.api.switchboard.audio'
+    )
+  })
+
   it('gives the OpenAI extension the key over websocket', () => {
     initialized(WEBSOCKET)
     expect(commandFor('initialize').params.params.extensions).toEqual({

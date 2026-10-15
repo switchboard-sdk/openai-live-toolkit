@@ -26,7 +26,12 @@ import {
   useOpenAILiveToolkit,
   useTool,
 } from '@synervoz/openai-live-toolkit';
-import { AIC_LICENSE_KEY } from '@env';
+import {
+  AIC_LICENSE_KEY,
+  SWITCHBOARD_API_URL,
+  SWITCHBOARD_APP_ID,
+  SWITCHBOARD_APP_SECRET,
+} from '@env';
 import { colors } from './colors';
 
 const INSTRUCTIONS =
@@ -35,7 +40,11 @@ const INSTRUCTIONS =
 export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
+      {/* Empty .env values fall back to the shared app on production. */}
       <OpenAILiveToolkitProvider
+        appId={SWITCHBOARD_APP_ID || undefined}
+        appSecret={SWITCHBOARD_APP_SECRET || undefined}
+        apiUrl={SWITCHBOARD_API_URL}
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
         instructions={INSTRUCTIONS}>
         <Screen />

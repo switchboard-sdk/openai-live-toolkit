@@ -81,6 +81,8 @@ export interface OpenAILiveToolkitInitializeOptions {
   appId?: string
   /** Switchboard app secret. Optional, with the same fallback as {@link appId}. */
   appSecret?: string
+  /** Switchboard backend, e.g. `https://staging.api.switchboard.audio`. Defaults to production. */
+  apiUrl?: string
   /** Defaults to `'webrtc'`. Fixed for the engine's lifetime. */
   transport?: OpenAILiveTransport
   /** OpenAI API key. Required by {@link OpenAILiveToolkit.start} for the `websocket` transport. */
@@ -404,6 +406,7 @@ export function createOpenAILiveToolkit() {
     session.delegateInstructions = options.delegateInstructions ?? ''
     speakerIsolation = options.speakerIsolation ?? true
 
+    const apiUrl = options.apiUrl?.trim() ?? ''
     const c = ensureClient()
     // Native SDK survives JS reloads — skip re-init if already initialized.
     if (c.getValue('switchboard', 'isInitialized').result !== true) {
@@ -413,7 +416,12 @@ export function createOpenAILiveToolkit() {
       if (isolationAvailable) {
         extensions.AICoustics = { licenseKey }
       }
-      const res = c.callAction('switchboard', 'initialize', { appID: appId, appSecret, extensions })
+      const res = c.callAction('switchboard', 'initialize', {
+        appID: appId,
+        appSecret,
+        ...(apiUrl === '' ? {} : { apiURL: apiUrl }),
+        extensions,
+      })
       if (res.error) {
         initError = `Switchboard initialization failed: ${res.error.message}`
         emitError('INIT_FAILED', initError, true)

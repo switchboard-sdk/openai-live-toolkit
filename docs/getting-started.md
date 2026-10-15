@@ -120,7 +120,8 @@ Pass the credentials to the provider:
 
 | Prop | Required | Notes |
 | --- | --- | --- |
-| `appId`, `appSecret` | no | Switchboard credentials. Fall back to shared defaults. |
+| `appId`, `appSecret` | no | Switchboard credentials. Fall back to shared defaults, which only exist on production. |
+| `apiUrl` | no | Switchboard backend, e.g. `https://staging.api.switchboard.audio`. Defaults to production. Anything other than `https://<host>.switchboard.audio` fails `initialize`. |
 | `openAIApiKey` | with `websocket` | `start()` fails with `MISSING_API_KEY` without one. Ignored with `webrtc`. |
 | `aiCousticsLicenseKey` | no | Enables speaker isolation in a build that links AICoustics. Without either the graph has no Quail node. |
 
