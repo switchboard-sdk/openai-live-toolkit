@@ -59,7 +59,8 @@ function happyPath(engineId = 'engine-1'): void {
   })
 }
 
-const CREDS = { appId: 'app-123', appSecret: 'secret-456', openAIApiKey: 'sk-openai' }
+const CREDS = { appId: 'app-123', appSecret: 'secret-456' }
+const WEBSOCKET = { ...CREDS, transport: 'websocket' as const, openAIApiKey: 'sk-openai' }
 const WITH_ISOLATION = { ...CREDS, aiCousticsLicenseKey: 'aic-key' }
 
 function initialized(
@@ -108,12 +109,25 @@ beforeEach(() => {
 })
 
 describe('initialize', () => {
-  it('sends switchboard.initialize with creds and the OpenAI extension key', () => {
+  it('sends switchboard.initialize with creds and the OpenAI extension', () => {
     initialized()
     const params = commandFor('initialize').params.params
     expect(params.appID).toBe('app-123')
     expect(params.appSecret).toBe('secret-456')
-    expect(params.extensions).toEqual({ OpenAI: { apiKey: 'sk-openai' } })
+    expect(params.extensions).toEqual({ OpenAI: {} })
+  })
+
+  it('gives the OpenAI extension the key over websocket', () => {
+    initialized(WEBSOCKET)
+    expect(commandFor('initialize').params.params.extensions).toEqual({
+      OpenAI: { apiKey: 'sk-openai' },
+    })
+  })
+
+  it('ignores an OpenAI key over webrtc, with a warning', () => {
+    initialized({ ...CREDS, openAIApiKey: 'sk-openai' })
+    expect(commandFor('initialize').params.params.extensions).toEqual({ OpenAI: {} })
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('openAIApiKey ignored'))
   })
 
   it('adds the AICoustics extension when a license key is given', () => {
@@ -140,7 +154,7 @@ describe('initialize', () => {
   })
 
   it('falls back to the default Switchboard credentials when none are passed', () => {
-    initialized({ openAIApiKey: 'sk-openai' })
+    initialized({})
     const params = commandFor('initialize').params.params
     expect(params.appID).toBe(DEFAULT_SWITCHBOARD_APP_ID)
     expect(params.appSecret).toBe(DEFAULT_SWITCHBOARD_APP_SECRET)
@@ -206,10 +220,15 @@ describe('start guards', () => {
     })
   })
 
-  it('throws MISSING_API_KEY without an OpenAI key, before touching the mic', async () => {
-    const toolkit = initialized({ appId: 'a', appSecret: 'b' })
+  it('throws MISSING_API_KEY over websocket without an OpenAI key, before touching the mic', async () => {
+    const toolkit = initialized({ ...CREDS, transport: 'websocket' })
     await expect(toolkit.start()).rejects.toMatchObject({ code: 'MISSING_API_KEY', fatal: true })
     expect(native.requestMicrophonePermission).not.toHaveBeenCalled()
+  })
+
+  it('starts over webrtc without an OpenAI key', async () => {
+    const toolkit = await running(CREDS)
+    expect(toolkit.isRunning).toBe(true)
   })
 
   it('throws when the mic is denied', async () => {
@@ -296,7 +315,7 @@ describe('graph', () => {
   it('bakes defaults into the Live node', async () => {
     await running()
     expect(liveNodeConfig()).toEqual({
-      apiKey: 'sk-openai',
+      transport: 'webrtc',
       model: 'gpt-live-1',
       voice: 'marin',
       instructions: '',
@@ -305,6 +324,11 @@ describe('graph', () => {
       responsesInstructions: expect.stringContaining('never claim an action is done'),
       tools: [],
     })
+  })
+
+  it('gives the Live node the transport and key over websocket', async () => {
+    await running(WEBSOCKET)
+    expect(liveNodeConfig()).toMatchObject({ transport: 'websocket', apiKey: 'sk-openai' })
   })
 
   it('carries seeded settings and registered tools into the Live node', async () => {

@@ -12,3 +12,5 @@ All notable changes to this project are documented here. The format follows [Kee
 - A grouped live transcript of both speakers.
 - Context actions: `appendInstructions`, `addContext`, `say`.
 - Example app with a transcript, isolation toggle, mute and two tools.
+- `transport` prop: `'webrtc'` by default, where the Switchboard backend creates the session and the app holds no OpenAI key; `'websocket'` with `openAIApiKey`. Requires iOS 14.
+- `SWITCHBOARD_LOCAL_BUILD` for frameworks built from a `switchboard-sdk` checkout.

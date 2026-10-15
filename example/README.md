@@ -6,8 +6,10 @@ A GPT-Live voice assistant screen: start/stop, an optional speaker isolation tog
 
 Needs Node 22+, Ruby 3.1+ with Bundler, Xcode, and AWS credentials that can read `s3://switchboard-sdk` (see [Getting started](../docs/getting-started.md)).
 
+The app uses the shared Switchboard credentials and the WebRTC transport, so it needs no OpenAI key: the Switchboard backend creates the session.
+
 ```sh
-cp .env.example .env         # fill in OPENAI_API_KEY
+cp .env.example .env
 npm install
 cd ios && bundle exec pod install && cd ..
 npm start

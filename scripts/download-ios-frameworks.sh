@@ -10,6 +10,10 @@
 # SWITCHBOARD_BUILD picks the build: "release/<version>" (default) or a branch
 # build path.
 #
+# SWITCHBOARD_LOCAL_BUILD=<switchboard-sdk checkout>/out copies the packages
+# built there (inv sdk.build-ios, inv openai.build-ios) instead, for SDK
+# branches that aren't in S3. Packages it doesn't have still come from S3.
+#
 # OPENAI_LIVE_AICOUSTICS=1 also fetches the AICoustics extension for speaker
 # isolation. It isn't published, so it's left out by default.
 #
@@ -30,16 +34,23 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORKS_DIR="${SCRIPT_DIR}/../ios/Frameworks"
 
-if ! command -v aws &> /dev/null; then
-  echo "error: the AWS CLI is required to fetch private Switchboard builds (brew install awscli)." >&2
-  exit 1
-fi
-
 mkdir -p "${FRAMEWORKS_DIR}"
 
 for pkg in "${PACKAGES[@]}"; do
   dest="${FRAMEWORKS_DIR}/${pkg}/ios"
   stamp="${dest}/.switchboard-build"
+
+  local_src="${SWITCHBOARD_LOCAL_BUILD:-}/${pkg}/iOS"
+  if [ -n "${SWITCHBOARD_LOCAL_BUILD:-}" ] && [ -d "${local_src}/${pkg}.xcframework" ]; then
+    # Always copied: a local build changes without its path changing.
+    echo "→ Copying ${pkg} from ${local_src}"
+    rm -rf "${dest}"
+    mkdir -p "${dest}"
+    cp -R "${local_src}/." "${dest}/"
+    echo "local:${local_src}" > "${stamp}"
+    continue
+  fi
+
   # The stamp makes the skip build-aware: changing SWITCHBOARD_BUILD re-downloads
   # instead of leaving a stale xcframework in place.
   if [ -d "${dest}/${pkg}.xcframework" ] && [ "$(cat "${stamp}" 2>/dev/null)" = "${SWITCHBOARD_BUILD}" ]; then
@@ -47,6 +58,10 @@ for pkg in "${PACKAGES[@]}"; do
     continue
   fi
 
+  if ! command -v aws &> /dev/null; then
+    echo "error: the AWS CLI is required to fetch private Switchboard builds (brew install awscli)." >&2
+    exit 1
+  fi
   echo "↓ Downloading ${pkg} (${SWITCHBOARD_BUILD})"
   rm -rf "${dest}"
   mkdir -p "${dest}"

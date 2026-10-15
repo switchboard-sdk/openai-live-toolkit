@@ -13,7 +13,7 @@ export type OpenAILiveErrorCode =
   | 'INIT_FAILED'
   /** An action needed the SDK, which never came up. */
   | 'NOT_INITIALIZED'
-  /** No OpenAI API key. GPT-Live has no ephemeral tokens, so a real key is required. */
+  /** No OpenAI API key for the `websocket` transport. */
   | 'MISSING_API_KEY'
   /** The user denied microphone access. */
   | 'MIC_PERMISSION_DENIED'
@@ -66,13 +66,22 @@ export class OpenAILiveError extends Error {
 /** Handler for {@link OpenAILiveToolkit.addErrorListener}. */
 export type OpenAILiveErrorListener = (error: OpenAILiveError) => void
 
+/**
+ * How the session reaches GPT-Live. `'webrtc'` goes through the Switchboard backend, which
+ * creates the session with the app's OpenAI key. `'websocket'` connects straight to OpenAI
+ * with {@link OpenAILiveToolkitInitializeOptions.openAIApiKey}.
+ */
+export type OpenAILiveTransport = 'webrtc' | 'websocket'
+
 /** Credentials and session seeds for {@link OpenAILiveToolkit.initialize}. */
 export interface OpenAILiveToolkitInitializeOptions {
   /** Switchboard app ID. Optional: falls back to the shared default credentials. */
   appId?: string
   /** Switchboard app secret. Optional, with the same fallback as {@link appId}. */
   appSecret?: string
-  /** OpenAI API key. Required by {@link OpenAILiveToolkit.start}. */
+  /** Defaults to `'webrtc'`. Fixed for the engine's lifetime. */
+  transport?: OpenAILiveTransport
+  /** OpenAI API key. Required by {@link OpenAILiveToolkit.start} for the `websocket` transport. */
   openAIApiKey?: string
   /**
    * ai-coustics license key. Speaker isolation needs it and a build that links the
@@ -193,6 +202,7 @@ function joinInstructions(...parts: string[]): string {
  * The model owns turn-taking, so there are no local VAD / turn taps.
  */
 function buildLiveEngine(
+  transport: OpenAILiveTransport,
   apiKey: string,
   tools: ToolDef[],
   session: {
@@ -239,9 +249,9 @@ function buildLiveEngine(
       id: LIVE_NODE,
       type: 'OpenAI.Live',
       configuration: {
-        // Passed to the node directly: GPT-Live has no token fallback if the
-        // extension-level key doesn't reach it.
-        apiKey,
+        transport,
+        // Passed to the node directly, in case the extension-level key doesn't reach it.
+        ...(transport === 'websocket' ? { apiKey } : {}),
         model: session.model,
         voice: session.voice,
         instructions: joinInstructions(session.instructions, toolsNote(tools)),
@@ -299,6 +309,7 @@ export function createOpenAILiveToolkit() {
   let initialized = false
   let initError: string | null = null
   let nativeSubscribed = false
+  let transport: OpenAILiveTransport = 'webrtc'
   let openAIApiKey = ''
   let isolationSupported = false
   let isolationAvailable = false
@@ -356,7 +367,14 @@ export function createOpenAILiveToolkit() {
     if (appSecret.trim() === '') {
       throw new Error('appSecret is required')
     }
+    transport = options.transport ?? 'webrtc'
     openAIApiKey = options.openAIApiKey?.trim() ?? ''
+    if (transport === 'webrtc' && openAIApiKey !== '') {
+      console.warn(
+        "[OpenAILiveToolkit] openAIApiKey ignored: the webrtc transport uses the Switchboard app's OpenAI key."
+      )
+      openAIApiKey = ''
+    }
     const licenseKey = options.aiCousticsLicenseKey?.trim() ?? ''
     isolationSupported = NativeOpenAILiveToolkit.isSpeakerIsolationSupported()
     isolationAvailable = isolationSupported && licenseKey !== ''
@@ -438,8 +456,8 @@ export function createOpenAILiveToolkit() {
 
   /**
    * Request the mic, build the graph, and start the engine (which opens the session).
-   * @throws {OpenAILiveError} if not initialized, the API key is missing, the mic is
-   * denied, or the engine fails to start.
+   * @throws {OpenAILiveError} if not initialized, the `websocket` transport has no API key,
+   * the mic is denied, or the engine fails to start.
    */
   async function start(): Promise<void> {
     if (!initialized || !client) {
@@ -454,10 +472,10 @@ export function createOpenAILiveToolkit() {
     if (running) {
       return
     }
-    if (openAIApiKey === '') {
+    if (transport === 'websocket' && openAIApiKey === '') {
       throw new OpenAILiveError(
         'MISSING_API_KEY',
-        'An OpenAI API key is required: GPT-Live has no ephemeral tokens.',
+        'The websocket transport needs an OpenAI API key.',
         true
       )
     }
@@ -474,7 +492,7 @@ export function createOpenAILiveToolkit() {
       const res = c.callAction(
         'switchboard',
         'createEngine',
-        buildLiveEngine(openAIApiKey, toolDefs(), session, {
+        buildLiveEngine(transport, openAIApiKey, toolDefs(), session, {
           available: isolationAvailable,
           enabled: speakerIsolation,
         })
