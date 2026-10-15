@@ -695,9 +695,11 @@ describe('Android', () => {
   const originalOS = Platform.OS
   let audioSession: { startAudioSession: jest.Mock; stopAudioSession: jest.Mock }
   let permission: jest.SpyInstance
+  let version: jest.SpyInstance
 
   beforeEach(() => {
     Platform.OS = 'android'
+    version = jest.spyOn(Platform, 'Version', 'get').mockReturnValue(34)
     audioSession = {
       startAudioSession: jest.fn().mockResolvedValue(undefined),
       stopAudioSession: jest.fn().mockResolvedValue(undefined),
@@ -710,6 +712,7 @@ describe('Android', () => {
 
   afterEach(() => {
     Platform.OS = originalOS
+    version.mockRestore()
     delete NativeModules.OpenAILiveToolkitAndroid
     permission.mockRestore()
   })
@@ -718,6 +721,28 @@ describe('Android', () => {
     await running()
     expect(permission).toHaveBeenCalledWith(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
     expect(native.requestMicrophonePermission).not.toHaveBeenCalled()
+  })
+
+  it('asks for notifications on Android 13+, for the foreground service', async () => {
+    await running()
+    expect(permission).toHaveBeenCalledWith(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+  })
+
+  it('does not ask for notifications before Android 13', async () => {
+    version.mockReturnValue(32)
+    await running()
+    expect(permission).not.toHaveBeenCalledWith(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+  })
+
+  it('starts when notifications are denied', async () => {
+    permission.mockImplementation(async (name: string) =>
+      name === PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        ? PermissionsAndroid.RESULTS.DENIED
+        : PermissionsAndroid.RESULTS.GRANTED
+    )
+    const toolkit = await running()
+    expect(toolkit.isRunning).toBe(true)
+    expect(audioSession.startAudioSession).toHaveBeenCalled()
   })
 
   it('throws when RECORD_AUDIO is denied', async () => {

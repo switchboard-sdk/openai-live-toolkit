@@ -479,6 +479,14 @@ export function createOpenAILiveToolkit() {
    * Best-effort: without them the conversation still runs in the foreground, with weaker AEC.
    */
   async function startAndroidAudioSession(): Promise<void> {
+    // Android 13+ hides the service's notification without this. The conversation runs either way.
+    if (Number(Platform.Version) >= 33) {
+      try {
+        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+      } catch {
+        // Carry on without the notification.
+      }
+    }
     try {
       await androidModule()?.startAudioSession()
     } catch {

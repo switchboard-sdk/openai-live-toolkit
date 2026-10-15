@@ -102,7 +102,7 @@ The app needs three changes:
 
 The rest comes with the library:
 
-- **Permissions.** `RECORD_AUDIO`, `INTERNET`, `MODIFY_AUDIO_SETTINGS` and the microphone foreground service merge in from its manifest. `start()` asks for the microphone.
+- **Permissions.** `RECORD_AUDIO`, `INTERNET`, `MODIFY_AUDIO_SETTINGS`, `POST_NOTIFICATIONS` and the microphone foreground service merge in from its manifest. `start()` asks for the microphone and, on Android 13+, for notifications. Without the latter the conversation still runs, but the foreground service's notification stays hidden.
 - **Background.** While the engine runs, a microphone foreground service with an ongoing notification keeps the conversation going with the screen locked or another app in front. Swiping the app away stops it. The session keeps billing meanwhile, so stop the engine when the conversation ends.
 - **Echo cancellation.** The mic and speaker open for voice communication and the audio mode switches to communication, routed to a connected headset, else the loudspeaker. Playback follows the in-call volume, which the volume keys control during a conversation. The canceller is the device's, so how well it works varies by phone.
 - **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
