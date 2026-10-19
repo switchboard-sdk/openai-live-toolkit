@@ -807,6 +807,16 @@ export function createOpenAILiveToolkit() {
     if (idleTimeoutMs <= 0 || idle || !running) {
       return
     }
+    // JS timers stop while an Android app is in the background, so the countdown runs natively there.
+    const android = Platform.OS === 'android' ? androidModule() : undefined
+    if (android) {
+      android.setIdleTimer(idleTimeoutMs).then((fired) => {
+        if (fired) {
+          goIdle()
+        }
+      })
+      return
+    }
     if (idleTimer) {
       clearTimeout(idleTimer)
     }
@@ -856,6 +866,9 @@ export function createOpenAILiveToolkit() {
     if (idleTimer) {
       clearTimeout(idleTimer)
       idleTimer = null
+    }
+    if (idleTimeoutMs > 0 && Platform.OS === 'android') {
+      androidModule()?.cancelIdleTimer()
     }
     idle = false
     forking = false

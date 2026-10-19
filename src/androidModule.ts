@@ -6,6 +6,9 @@ export interface OpenAILiveToolkitAndroidModule {
   startAudioSession(): Promise<void>
   /** Restore the normal audio route and stop the foreground service. */
   stopAudioSession(): Promise<void>
+  /** Resolves true after `ms`, false once replaced by another call or cancelled. Runs in the background. */
+  setIdleTimer(ms: number): Promise<boolean>
+  cancelIdleTimer(): void
   getConstants(): { documentsPath: string }
 }
 

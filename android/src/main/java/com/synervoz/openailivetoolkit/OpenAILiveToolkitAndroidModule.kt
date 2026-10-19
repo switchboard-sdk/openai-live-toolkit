@@ -34,6 +34,9 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
   private val audioManager: AudioManager
     get() = reactContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private var idleTimer: Pair<Runnable, Promise>? = null
+
   /** Start the foreground service and the communication route. Call with the mic granted. */
   @ReactMethod
   fun startAudioSession(promise: Promise) {
@@ -116,6 +119,36 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     }
     // SCO can take a couple of seconds; don't block start forever.
     Handler(Looper.getMainLooper()).postDelayed({ finish() }, ROUTE_TIMEOUT_MS)
+  }
+
+  /**
+   * Resolves true after [ms], or false once replaced or cancelled. Idle mode counts down here
+   * because React Native stops JS timers while the app is in the background.
+   */
+  @ReactMethod
+  fun setIdleTimer(ms: Double, promise: Promise) {
+    mainHandler.post {
+      cancelPendingIdleTimer()
+      val runnable = Runnable {
+        idleTimer = null
+        promise.resolve(true)
+      }
+      idleTimer = runnable to promise
+      mainHandler.postDelayed(runnable, ms.toLong())
+    }
+  }
+
+  @ReactMethod
+  fun cancelIdleTimer() {
+    mainHandler.post { cancelPendingIdleTimer() }
+  }
+
+  // On the main looper, like everything that touches idleTimer.
+  private fun cancelPendingIdleTimer() {
+    val (runnable, promise) = idleTimer ?: return
+    idleTimer = null
+    mainHandler.removeCallbacks(runnable)
+    promise.resolve(false)
   }
 
   private fun disableCommunicationRoute() {

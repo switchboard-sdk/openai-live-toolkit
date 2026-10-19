@@ -852,7 +852,7 @@ describe('requestMicrophonePermission', () => {
 
 describe('Android', () => {
   const originalOS = Platform.OS
-  let audioSession: { startAudioSession: jest.Mock; stopAudioSession: jest.Mock }
+  let audioSession: Record<string, jest.Mock>
   let permission: jest.SpyInstance
   let version: jest.SpyInstance
 
@@ -951,5 +951,44 @@ describe('Android', () => {
     scriptNative(() => makeRpcResponse(undefined, { code: -1, message: 'nope' }))
     expect(() => toolkit.stop()).toThrow(OpenAILiveError)
     expect(audioSession.stopAudioSession).not.toHaveBeenCalled()
+  })
+  describe('idle mode', () => {
+    // One per setIdleTimer call; the native module resolves a replaced timer with false.
+    let timers: ((fired: boolean) => void)[]
+
+    beforeEach(() => {
+      timers = []
+      audioSession.setIdleTimer = jest.fn(
+        () => new Promise<boolean>((resolve) => timers.push(resolve))
+      )
+      audioSession.cancelIdleTimer = jest.fn()
+    })
+
+    async function live() {
+      const toolkit = await running({ ...CREDS, idleTimeoutMs: 10_000 })
+      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+      return toolkit
+    }
+
+    it('counts down natively, since JS timers stop in the background', async () => {
+      await live()
+      expect(audioSession.setIdleTimer).toHaveBeenLastCalledWith(10_000)
+      timers[timers.length - 1](true)
+      await flush()
+      expect(commandFor('endSession')).toBeDefined()
+    })
+
+    it('ignores a timer that was replaced', async () => {
+      await live()
+      timers[timers.length - 1](false)
+      await flush()
+      expect(commandFor('endSession')).toBeUndefined()
+    })
+
+    it('cancels the native timer on stop', async () => {
+      const toolkit = await live()
+      toolkit.stop()
+      expect(audioSession.cancelIdleTimer).toHaveBeenCalled()
+    })
   })
 })
