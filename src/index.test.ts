@@ -1,5 +1,6 @@
 jest.mock('./NativeOpenAILiveToolkit')
 
+import { NativeModules, Platform } from 'react-native'
 import { getDocumentsPath, writeFile } from './index'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
 
@@ -17,6 +18,22 @@ describe('filesystem passthroughs', () => {
     native.getDocumentsPath.mockReturnValue('/docs')
     expect(getDocumentsPath()).toBe('/docs')
     expect(native.getDocumentsPath).toHaveBeenCalled()
+  })
+
+  it('getDocumentsPath reads the JVM module on Android', () => {
+    native.getDocumentsPath.mockClear()
+    const originalOS = Platform.OS
+    Platform.OS = 'android'
+    NativeModules.OpenAILiveToolkitAndroid = {
+      getConstants: () => ({ documentsPath: '/data/user/0/app/files' }),
+    }
+    try {
+      expect(getDocumentsPath()).toBe('/data/user/0/app/files')
+      expect(native.getDocumentsPath).not.toHaveBeenCalled()
+    } finally {
+      Platform.OS = originalOS
+      delete NativeModules.OpenAILiveToolkitAndroid
+    }
   })
 
   it('writeFile delegates to the native module', () => {

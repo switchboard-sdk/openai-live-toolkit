@@ -1,0 +1,73 @@
+// React Native Android library module for OpenAILiveToolkit.
+//
+// Provides codegen for the TurboModule spec, the Android platform glue, and the
+// Switchboard SDK + extension AARs. The shared C++ TurboModule (../cpp) is compiled
+// and registered in the *consuming app's* native build via RN's C++ autolinking —
+// see react-native.config.js (android cxx* keys) and android/CMakeLists.txt. The
+// app therefore links Switchboard through Prefab; this module makes the AARs (and
+// their Prefab packages) available to it via `api`.
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+def safeExtGet(prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+// The OpenAI.Live node isn't in a public Maven release yet, so the AARs come from
+// private S3 builds, like the iOS frameworks. Fetched on the first build; run
+// `npm run android:libraries` to switch builds (see the script for its variables).
+def switchboardPackages = ["SwitchboardSDK", "SwitchboardOpenAI"]
+def switchboardLibs = switchboardPackages.collect { file("libs/${it}.aar") }
+
+if (switchboardLibs.any { !it.exists() }) {
+    def fetch = providers.exec {
+        commandLine "bash", file("../scripts/download-android-libraries.sh").absolutePath
+        ignoreExitValue = true
+    }
+    logger.lifecycle(fetch.standardOutput.asText.get())
+    if (fetch.result.get().exitValue != 0) {
+        throw new GradleException(
+            "OpenAILiveToolkit: fetching the Switchboard AARs failed:\n" + fetch.standardError.asText.get()
+        )
+    }
+}
+
+react {
+    // Codegen reads the TurboModule spec from the package's TS sources and
+    // generates RNOpenAILiveToolkitSpec (matches package.json codegenConfig.name).
+    jsRootDir = file("../src/")
+    libraryName = "RNOpenAILiveToolkitSpec"
+    codegenJavaPackageName = "com.synervoz.openailivetoolkit"
+}
+
+android {
+    namespace "com.synervoz.openailivetoolkit"
+    compileSdk safeExtGet("compileSdkVersion", 35)
+
+    defaultConfig {
+        minSdkVersion safeExtGet("minSdkVersion", 24)
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+repositories {
+    mavenCentral()
+    google()
+}
+
+dependencies {
+    implementation "com.facebook.react:react-android"
+
+    // `api` so the Switchboard AARs (and their Prefab packages) are visible to
+    // the consuming app's native build, which is where our cpp is compiled.
+    api files(switchboardLibs)
+}

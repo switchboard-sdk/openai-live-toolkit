@@ -87,6 +87,8 @@ Podfile.lock
 # Switchboard frameworks — downloaded by scripts/download-ios-frameworks.sh
 # (podspec prepare_command). Never committed; re-fetched on a clean checkout.
 ios/Frameworks/
+# Same for Android, by scripts/download-android-libraries.sh.
+android/libs/
 
 # Swift Package Manager
 .build/

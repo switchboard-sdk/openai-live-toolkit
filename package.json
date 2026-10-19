@@ -1,7 +1,7 @@
 {
   "name": "@synervoz/openai-live-toolkit",
   "version": "0.1.0",
-  "description": "React Native toolkit for full-duplex OpenAI GPT-Live voice agents with optional ai-coustics speaker isolation, powered by the Switchboard SDK. iOS only.",
+  "description": "React Native toolkit for full-duplex OpenAI GPT-Live voice agents with optional ai-coustics speaker isolation, powered by the Switchboard SDK.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "react-native": "src/index",
@@ -10,10 +10,14 @@
     "src",
     "dist",
     "ios",
+    "android",
     "cpp",
     "scripts",
     "OpenAILiveToolkit.podspec",
+    "react-native.config.js",
     "!ios/Frameworks",
+    "!android/libs",
+    "!android/build",
     "!**/__tests__",
     "!**/__mocks__",
     "!**/*.test.*",
@@ -31,11 +35,13 @@
     "test:cov": "jest --coverage",
     "example:install": "npm install && cd example && npm install",
     "prepare": "npm run build",
-    "ios:frameworks": "bash scripts/download-ios-frameworks.sh"
+    "ios:frameworks": "bash scripts/download-ios-frameworks.sh",
+    "android:libraries": "bash scripts/download-android-libraries.sh"
   },
   "keywords": [
     "react-native",
     "ios",
+    "android",
     "audio",
     "switchboard",
     "openai",
@@ -82,6 +88,9 @@
     "name": "RNOpenAILiveToolkitSpec",
     "type": "modules",
     "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.synervoz.openailivetoolkit"
+    },
     "ios": {
       "modulesProvider": {
         "OpenAILiveToolkit": "OpenAILiveToolkitModuleProvider"

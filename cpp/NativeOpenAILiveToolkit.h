@@ -22,7 +22,7 @@ using MicrophonePermissionHook = std::function<void(std::function<void(bool)>)>;
  *
  * The entire SDK is driven over one JSON-RPC string channel (`processCommand`),
  * and SDK events are pushed to JS through the generated `emitOnEventReceived`.
- * Compiled for iOS by the podspec.
+ * Compiled by the podspec on iOS and by android/CMakeLists.txt on Android.
  */
 class NativeOpenAILiveToolkit : public NativeOpenAILiveToolkitCxxSpec<NativeOpenAILiveToolkit> {
 public:
@@ -34,9 +34,9 @@ public:
   AsyncPromise<bool> requestMicrophonePermission(jsi::Runtime& rt);
   bool isSpeakerIsolationSupported(jsi::Runtime& rt);
 
-  /** Set by the iOS provider at startup. */
+  /** Set by the iOS provider at startup. Android reads it from the JVM module instead. */
   static void setDocumentsPath(const std::string& path);
-  /** Set by the platform layer to perform the mic-permission request. */
+  /** Set by the iOS provider to perform the mic-permission request. Android asks from JS. */
   static void setMicrophonePermissionHook(MicrophonePermissionHook hook);
 
 private:
