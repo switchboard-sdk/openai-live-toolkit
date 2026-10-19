@@ -42,11 +42,13 @@ for pkg in "${PACKAGES[@]}"; do
 
   local_src="${SWITCHBOARD_LOCAL_BUILD:-}/${pkg}/iOS"
   if [ -n "${SWITCHBOARD_LOCAL_BUILD:-}" ] && [ -d "${local_src}/${pkg}.xcframework" ]; then
-    # Always copied: a local build changes without its path changing.
+    # Always copied: a local build changes without its path changing. -L because a local
+    # AICoustics links its models from the SDK checkout, and CocoaPods drops resources
+    # that resolve outside the pod.
     echo "→ Copying ${pkg} from ${local_src}"
     rm -rf "${dest}"
     mkdir -p "${dest}"
-    cp -R "${local_src}/." "${dest}/"
+    cp -RL "${local_src}/." "${dest}/"
     echo "local:${local_src}" > "${stamp}"
     continue
   fi
