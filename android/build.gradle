@@ -17,7 +17,7 @@ def safeExtGet(prop, fallback) {
 // The OpenAI.Live node isn't in a public Maven release yet, so the AARs come from
 // private S3 builds, like the iOS frameworks. Fetched on the first build; run
 // `npm run android:libraries` to switch builds (see the script for its variables).
-def switchboardPackages = ["SwitchboardSDK", "SwitchboardOpenAI"]
+def switchboardPackages = ["SwitchboardSDK", "SwitchboardOnnx", "SwitchboardSileroVAD", "SwitchboardOpenAI"]
 def switchboardLibs = switchboardPackages.collect { file("libs/${it}.aar") }
 
 if (switchboardLibs.any { !it.exists() }) {

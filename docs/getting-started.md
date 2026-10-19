@@ -64,13 +64,13 @@ With both, `speakerIsolation.available` is true and Quail sits in front of the m
 
 ## Android setup
 
-The C++ TurboModule is compiled in the app's native build and links the Switchboard AARs through Prefab. The first Gradle build runs `scripts/download-android-libraries.sh`, which pulls `SwitchboardSDK` and `SwitchboardOpenAI` into the toolkit's `android/libs/`. It takes the same S3 access, `SWITCHBOARD_BUILD` and `SWITCHBOARD_LOCAL_BUILD` as the iOS script. Later builds reuse the AARs, so after changing either variable run `npm run android:libraries` from the toolkit checkout.
+The C++ TurboModule is compiled in the app's native build and links the Switchboard AARs through Prefab. The first Gradle build runs `scripts/download-android-libraries.sh`, which pulls `SwitchboardSDK`, `SwitchboardOpenAI`, and `SwitchboardSileroVAD` with `SwitchboardOnnx` (for idle mode) into the toolkit's `android/libs/`. It takes the same S3 access, `SWITCHBOARD_BUILD` and `SWITCHBOARD_LOCAL_BUILD` as the iOS script. Later builds reuse the AARs, so after changing either variable run `npm run android:libraries` from the toolkit checkout.
 
 The WebRTC transport needs a local SDK build here too:
 
 ```sh
 # in switchboard-sdk
-inv sdk.build-android && inv openai.build-android
+inv sdk.build-android && inv openai.build-android && inv onnx.build-android && inv silerovad.build-android
 
 # in the toolkit checkout
 SWITCHBOARD_LOCAL_BUILD=/path/to/switchboard-sdk/out npm run android:libraries
