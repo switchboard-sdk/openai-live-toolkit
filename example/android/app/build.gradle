@@ -83,7 +83,7 @@ android {
 
     namespace "com.synervoz.openailive.example"
     defaultConfig {
-        applicationId "com.synervoz.openailive.example"
+        applicationId "com.synervoz.duplexvoice"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
