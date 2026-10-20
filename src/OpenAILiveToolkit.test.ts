@@ -733,6 +733,50 @@ describe('idle mode', () => {
     expect(toolkit.isIdle).toBe(false)
   })
 
+  describe('after a wake', () => {
+    async function woken(options: Parameters<OpenAILiveToolkit['initialize']>[0] = IDLE) {
+      const toolkit = await live(options)
+      jest.advanceTimersByTime(10_000)
+      vad('speechStarted')
+      vad('speechEnded')
+      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+      return toolkit
+    }
+
+    it('closes again after the grace period when the model does not answer', async () => {
+      const toolkit = await woken()
+      jest.advanceTimersByTime(4_999)
+      expect(commandsFor('endSession')).toHaveLength(1)
+      jest.advanceTimersByTime(1)
+      expect(commandsFor('endSession')).toHaveLength(2)
+      expect(toolkit.isIdle).toBe(true)
+    })
+
+    it('keeps the grace period through an input transcript, like an "mm" from a noise', async () => {
+      await woken()
+      emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: ' Mm' })
+      jest.advanceTimersByTime(5_000)
+      expect(commandsFor('endSession')).toHaveLength(2)
+    })
+
+    it('goes back to the full timeout once the model answers', async () => {
+      await woken()
+      emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
+      jest.advanceTimersByTime(9_999)
+      expect(commandsFor('endSession')).toHaveLength(1)
+      jest.advanceTimersByTime(1)
+      expect(commandsFor('endSession')).toHaveLength(2)
+    })
+
+    it('waits the full timeout when the grace period is off', async () => {
+      await woken({ ...IDLE, wakeGraceMs: 0 })
+      jest.advanceTimersByTime(9_999)
+      expect(commandsFor('endSession')).toHaveLength(1)
+      jest.advanceTimersByTime(1)
+      expect(commandsFor('endSession')).toHaveLength(2)
+    })
+  })
+
   it('starts fresh after the instructions or voice change, which a fork would keep', async () => {
     const toolkit = await live()
     jest.advanceTimersByTime(10_000)

@@ -144,6 +144,11 @@ export interface OpenAILiveToolkitProviderProps {
    * speaks, continuing the conversation. Off by default. Fixed once initialized.
    */
   idleTimeoutMs?: number
+  /**
+   * After a wake, close again after this many ms unless the model replies. Defaults to 5000; 0 turns it off.
+   * Fixed once initialized.
+   */
+  wakeGraceMs?: number
   /** Called for every failure, including non-fatal ones that never reach `error`. */
   onError?: (error: OpenAILiveError) => void
   children?: ReactNode
@@ -211,6 +216,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       delegateInstructions: props.delegateInstructions,
       speakerIsolation: isolationEnabled,
       idleTimeoutMs: props.idleTimeoutMs,
+      wakeGraceMs: props.wakeGraceMs,
     })
     setIsRunning(toolkit.isRunning)
     setIsolationSupported(toolkit.isSpeakerIsolationSupported)

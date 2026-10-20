@@ -111,6 +111,12 @@ export interface OpenAILiveToolkitInitializeOptions {
    * While on, OpenAI stores each session so the next one can continue it.
    */
   idleTimeoutMs?: number
+  /**
+   * After a wake, close again after this many ms unless the model replies or delegates. Keeps a
+   * wake on a noise (a TV, the phone vibrating) from costing a full {@link idleTimeoutMs}.
+   * Defaults to 5000, capped at {@link idleTimeoutMs}; 0 turns it off.
+   */
+  wakeGraceMs?: number
 }
 
 /**
@@ -191,6 +197,7 @@ const NODE_EVENT_TYPE: Record<string, OpenAILiveToolkitEventType> = {
 const GRAPH_SAMPLE_RATE = 48000
 const QUAIL_SAMPLE_RATE = 16000
 const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
+const DEFAULT_WAKE_GRACE_MS = 5_000
 
 // GPT-Live only delegates work it knows can be done, and the tools live in the delegate's config,
 // so the live model is told about them; the delegate is told to call them rather than say it did.
@@ -378,6 +385,7 @@ export function createOpenAILiveToolkit() {
 
   // Idle mode. 0 is off.
   let idleTimeoutMs = 0
+  let wakeGraceMs = DEFAULT_WAKE_GRACE_MS
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   // The session was closed for idling and reopens when the user speaks.
   let idle = false
@@ -385,6 +393,8 @@ export function createOpenAILiveToolkit() {
   let lastSessionId: string | null = null
   // The session coming up is a fork of lastSessionId.
   let forking = false
+  // Woken by speech the model hasn't answered yet, so the countdown is wakeGraceMs.
+  let woken = false
   let userSpeaking = false
   let toolCallsInFlight = 0
 
@@ -449,6 +459,7 @@ export function createOpenAILiveToolkit() {
     session.delegateInstructions = options.delegateInstructions ?? ''
     speakerIsolation = options.speakerIsolation ?? true
     idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
+    wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
 
     const apiUrl = options.apiUrl?.trim() ?? ''
     const c = ensureClient()
@@ -807,10 +818,12 @@ export function createOpenAILiveToolkit() {
     if (idleTimeoutMs <= 0 || idle || !running) {
       return
     }
+    const timeoutMs =
+      woken && wakeGraceMs > 0 ? Math.min(wakeGraceMs, idleTimeoutMs) : idleTimeoutMs
     // JS timers stop while an Android app is in the background, so the countdown runs natively there.
     const android = Platform.OS === 'android' ? androidModule() : undefined
     if (android) {
-      android.setIdleTimer(idleTimeoutMs).then((fired) => {
+      android.setIdleTimer(timeoutMs).then((fired) => {
         if (fired) {
           goIdle()
         }
@@ -820,7 +833,13 @@ export function createOpenAILiveToolkit() {
     if (idleTimer) {
       clearTimeout(idleTimer)
     }
-    idleTimer = setTimeout(goIdle, idleTimeoutMs)
+    idleTimer = setTimeout(goIdle, timeoutMs)
+  }
+
+  /** The model answered a wake, so it was the user: back to the full timeout. */
+  function engaged(): void {
+    woken = false
+    touch()
   }
 
   /** Close a session nobody has talked in for {@link idleTimeoutMs}. */
@@ -839,6 +858,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     idle = true
+    woken = false
     sessionLive = false
     // The node reports no sessionClosed for a session it was told to end, so say it here.
     const event: OpenAILiveToolkitEvent = {
@@ -858,6 +878,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     idle = false
+    woken = true
     forking = lastSessionId !== null
     client?.callAction(LIVE_NODE, 'startSession', forking ? { forkSessionId: lastSessionId } : {})
   }
@@ -871,6 +892,7 @@ export function createOpenAILiveToolkit() {
       androidModule()?.cancelIdleTimer()
     }
     idle = false
+    woken = false
     forking = false
     lastSessionId = null
     userSpeaking = false
@@ -941,6 +963,7 @@ export function createOpenAILiveToolkit() {
     }
     switch (event.name) {
       case 'toolCall':
+        woken = false
         handleToolCall(event.data as ToolCall)
         break
       case 'sessionStarted':
@@ -959,10 +982,13 @@ export function createOpenAILiveToolkit() {
         syncToolsNote()
         touch()
         break
+      // An "mm" from a noise restarts the countdown but doesn't show the model was talked to.
       case 'inputTranscriptDelta':
+        touch()
+        break
       case 'outputTranscriptDelta':
       case 'delegationCreated':
-        touch()
+        engaged()
         break
       case 'sessionStarting':
       case 'sessionDisconnected':

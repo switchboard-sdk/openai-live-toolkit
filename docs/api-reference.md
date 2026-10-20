@@ -20,6 +20,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
 | `speakerIsolation` | `true` | Start with Quail on, when it's available. |
 | `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
+| `wakeGraceMs` | `5000` | After a wake, close again after this long unless the model replies. Capped at `idleTimeoutMs`; `0` turns it off. |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
 ## `useOpenAILiveToolkit()`

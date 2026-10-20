@@ -148,6 +148,6 @@ mic → mono → [Quail] → splitter → OpenAI.Live → speaker
 
 - **The conversation continues.** The new session forks the closed one, so the model remembers what was said. OpenAI stores sessions while idle mode is on, which forking needs. If the stored session is gone, a new one starts instead.
 - **Nothing is lost while it reopens.** Reopening takes 1–4 s, mostly OpenAI forking the session. The `OpenAI.Live` node keeps what the user says meanwhile, plus a short pre-roll from before the VAD fired, and plays it to the model sped up until it catches up: twice real-time speed with the pitch kept over WebRTC, three times over the WebSocket. The first reply after a wake comes about a second later than usual, more when the fork is slow.
-- **Any voice wakes it.** The VAD can't tell the user from a TV or someone nearby, and Quail doesn't help while the user is silent: it keeps a lone voice. A false wake costs one idle timeout of session time.
+- **Any voice wakes it**, and some noises: the VAD can't tell the user from a TV or someone nearby, and takes a phone vibrating on a table for speech. Quail doesn't help while the user is silent: it keeps a lone voice, and lets the vibration through. A wake the model doesn't answer closes again after `wakeGraceMs` (5 s by default) instead of a full idle timeout.
 - **Instructions and voice.** A fork keeps the closed session's instructions and voice, so changing either while idle makes the next session start fresh.
 - **Muted.** Speech doesn't reopen the session while the model is muted.
