@@ -825,6 +825,21 @@ describe('idle mode', () => {
     expect(errors.map((e) => e.fatal)).toEqual([false])
   })
 
+  it('treats a fork that fails to connect as non-fatal, and the next session as new', async () => {
+    const toolkit = await live()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'transport_error',
+      message: 'Failed to create the live session: HTTP 502, Failed to fork live session',
+    })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(errors.map((e) => e.fatal)).toEqual([false])
+    expect(native.log).toHaveBeenCalledWith('session started s2')
+  })
+
   it('stops counting once the engine stops', async () => {
     const toolkit = await live()
     toolkit.stop()
