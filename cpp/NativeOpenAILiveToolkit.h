@@ -30,12 +30,18 @@ public:
 
   std::string processCommand(jsi::Runtime& rt, std::string command);
   std::string getDocumentsPath(jsi::Runtime& rt);
+  std::string getCachePath(jsi::Runtime& rt);
   bool writeFile(jsi::Runtime& rt, std::string path, std::string contents);
   AsyncPromise<bool> requestMicrophonePermission(jsi::Runtime& rt);
   bool isSpeakerIsolationSupported(jsi::Runtime& rt);
+  void startLogFile(jsi::Runtime& rt, std::string directory);
+  void log(jsi::Runtime& rt, std::string message);
+  std::string exportLogFile(jsi::Runtime& rt);
 
   /** Set by the iOS provider at startup. Android reads it from the JVM module instead. */
   static void setDocumentsPath(const std::string& path);
+  /** Set by the iOS provider at startup. Android reads it from the JVM module instead. */
+  static void setCachePath(const std::string& path);
   /** Set by the iOS provider to perform the mic-permission request. Android asks from JS. */
   static void setMicrophonePermissionHook(MicrophonePermissionHook hook);
 

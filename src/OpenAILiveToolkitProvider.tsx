@@ -17,6 +17,7 @@ import {
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
+import { shareLogs } from './logs'
 
 /**
  * Session connection state. `'idle'` means idle mode closed the session and it reopens
@@ -98,6 +99,8 @@ export interface OpenAILiveToolkitContextValue {
   registerTool: (tool: OpenAILiveToolkitTool) => void
   /** Remove a registered tool by name. */
   unregisterTool: (name: string) => void
+  /** Open the share sheet with the log file. Rejects unless the provider has `logFile` on. */
+  shareLogs: () => Promise<void>
 }
 
 const OpenAILiveToolkitContext = createContext<OpenAILiveToolkitContextValue | null>(null)
@@ -149,6 +152,15 @@ export interface OpenAILiveToolkitProviderProps {
    * Fixed once initialized.
    */
   wakeGraceMs?: number
+  /**
+   * Let the delegate search the web, so the model can answer about weather, news and other
+   * current information. Off by default; each search is billed. Fixed once initialized.
+   */
+  webSearch?: boolean
+  /** Write the SDK's log and the toolkit's events to a file, for `shareLogs`. Off by default. */
+  logFile?: boolean
+  /** Include the transcript and tool arguments and results in the log. Off by default. */
+  logConversation?: boolean
   /** Called for every failure, including non-fatal ones that never reach `error`. */
   onError?: (error: OpenAILiveError) => void
   children?: ReactNode
@@ -217,6 +229,9 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       speakerIsolation: isolationEnabled,
       idleTimeoutMs: props.idleTimeoutMs,
       wakeGraceMs: props.wakeGraceMs,
+      webSearch: props.webSearch,
+      logFile: props.logFile,
+      logConversation: props.logConversation,
     })
     setIsRunning(toolkit.isRunning)
     setIsolationSupported(toolkit.isSpeakerIsolationSupported)
@@ -389,6 +404,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     setMuted,
     registerTool,
     unregisterTool,
+    shareLogs,
   }
 
   return (

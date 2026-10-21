@@ -23,6 +23,12 @@
     facebook::react::NativeOpenAILiveToolkit::setDocumentsPath(
         std::string(documentsDir.UTF8String));
   }
+  // Caches aren't backed up, so the log stays on the device.
+  NSString *cacheDir =
+      NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+  if (cacheDir) {
+    facebook::react::NativeOpenAILiveToolkit::setCachePath(std::string(cacheDir.UTF8String));
+  }
 
   // Mic-permission request lives here — the C++ module can't reach AVFoundation.
   // Prompts once; a prior decision resolves without UI.

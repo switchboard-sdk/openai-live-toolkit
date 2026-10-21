@@ -1,6 +1,5 @@
-import { Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
-import { androidModule } from './androidModule'
+import { documentsPath } from './logs'
 
 /**
  * OpenAILiveToolkit — full-duplex OpenAI GPT-Live voice agents on iOS and Android, with
@@ -30,10 +29,7 @@ export type { OpenAIVoice } from './voice'
 
 /** Absolute path to the app's documents directory (for recordings/logs). */
 export function getDocumentsPath(): string {
-  if (Platform.OS === 'android') {
-    return androidModule()?.getConstants().documentsPath ?? ''
-  }
-  return NativeOpenAILiveToolkit.getDocumentsPath()
+  return documentsPath()
 }
 
 /** Write `contents` to `path`, overwriting. Returns whether it succeeded. */

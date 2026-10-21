@@ -1,6 +1,9 @@
 #include "NativeOpenAILiveToolkit.h"
 
 #include <fstream>
+#include <switchboard_core/Logger.hpp>
+
+#include "LogFile.hpp"
 
 // Switchboard extensions. Each must be loaded once, before any graph that uses
 // it is built — hence the constructor below. Headers resolve via the per-
@@ -33,10 +36,19 @@ NativeOpenAILiveToolkit::NativeOpenAILiveToolkit(std::shared_ptr<CallInvoker> js
 }
 
 static std::string s_documentsPath;
+static std::string s_cachePath;
 static MicrophonePermissionHook s_micPermissionHook;
 
 void NativeOpenAILiveToolkit::setDocumentsPath(const std::string& path) {
   s_documentsPath = path;
+}
+
+void NativeOpenAILiveToolkit::setCachePath(const std::string& path) {
+  s_cachePath = path;
+}
+
+std::string NativeOpenAILiveToolkit::getCachePath(jsi::Runtime& rt) {
+  return s_cachePath;
 }
 
 void NativeOpenAILiveToolkit::setMicrophonePermissionHook(MicrophonePermissionHook hook) {
@@ -75,6 +87,18 @@ bool NativeOpenAILiveToolkit::writeFile(jsi::Runtime& rt, std::string path,
   }
   file << contents;
   return file.good();
+}
+
+void NativeOpenAILiveToolkit::startLogFile(jsi::Runtime& rt, std::string directory) {
+  openailivetoolkit::LogFile::start(directory);
+}
+
+void NativeOpenAILiveToolkit::log(jsi::Runtime& rt, std::string message) {
+  switchboard::Logger::info("[OpenAILiveToolkit] " + message);
+}
+
+std::string NativeOpenAILiveToolkit::exportLogFile(jsi::Runtime& rt) {
+  return openailivetoolkit::LogFile::exportFile();
 }
 
 std::string NativeOpenAILiveToolkit::processCommand(jsi::Runtime& rt,
