@@ -17,3 +17,4 @@ All notable changes to this project are documented here. The format follows [Kee
 - `apiUrl` prop for a non-production Switchboard backend, such as staging.
 - Android support, without speaker isolation: the Switchboard AARs are fetched on the first Gradle build, a microphone foreground service keeps the conversation going in the background, and the example app has an Android target.
 - `idleTimeoutMs`: closes the session during silences and reopens it, forked from the closed one, when the user speaks.
+- `shareLogs()` on the hook: the SDK's log and the toolkit's events, transcript included, written to a file and shared through the share sheet. The example app has a Share logs link.

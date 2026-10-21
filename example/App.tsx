@@ -68,6 +68,7 @@ function Screen(): React.JSX.Element {
     speakerIsolation,
     muted,
     setMuted,
+    shareLogs,
   } = useOpenAILiveToolkit();
 
   const [backgroundColor, setBackgroundColor] = useState(colors.bg);
@@ -137,9 +138,17 @@ function Screen(): React.JSX.Element {
       <View style={[styles.section, styles.transcriptSection]}>
         <View style={styles.toggleRow}>
           <Text style={styles.sectionHeader}>Connection: {connectionStatus}</Text>
-          <TouchableOpacity onPress={clearTranscript}>
-            <Text style={styles.link}>Clear</Text>
-          </TouchableOpacity>
+          <View style={styles.links}>
+            <TouchableOpacity
+              onPress={() =>
+                shareLogs().catch((e) => console.warn(`Couldn't share the logs: ${e}`))
+              }>
+              <Text style={styles.link}>Share logs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={clearTranscript}>
+              <Text style={styles.link}>Clear</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <ScrollView ref={scrollRef}>
           {transcript.length === 0 ? (
@@ -196,6 +205,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  links: { flexDirection: 'row', gap: 16 },
   link: { fontSize: 13, color: colors.muted },
   hint: { fontSize: 13, color: colors.dim },
   transcript: { fontSize: 14, color: colors.body, marginBottom: 8 },

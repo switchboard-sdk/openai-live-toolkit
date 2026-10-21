@@ -1,6 +1,6 @@
 jest.mock('./NativeOpenAILiveToolkit')
 
-import { NativeModules, PermissionsAndroid, Platform } from 'react-native'
+import { NativeModules, PermissionsAndroid, Platform, Share } from 'react-native'
 import {
   createOpenAILiveToolkit,
   OpenAILiveError,
@@ -25,6 +25,13 @@ const native = NativeOpenAILiveToolkit as unknown as {
   processCommand: jest.Mock<string, [string]>
   requestMicrophonePermission: jest.Mock<Promise<boolean>, []>
   isSpeakerIsolationSupported: jest.Mock<boolean, []>
+  startLogFile: jest.Mock<void, [string]>
+  log: jest.Mock<void, [string]>
+  exportLogFile: jest.Mock<string, []>
+}
+
+function logged(): string[] {
+  return native.log.mock.calls.map(([line]) => line)
 }
 
 function sentCommands(): any[] {
@@ -829,6 +836,67 @@ describe('idle mode', () => {
     await live(CREDS)
     jest.advanceTimersByTime(600_000)
     expect(commandFor('endSession')).toBeUndefined()
+  })
+})
+
+describe('logs', () => {
+  it('starts the log file in the documents directory', () => {
+    initialized()
+    expect(native.startLogFile).toHaveBeenCalledWith('/mock/documents')
+  })
+
+  it('logs the transcript a turn at a time, and tool calls', async () => {
+    await running()
+    emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'Make it' })
+    emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: ' red.' })
+    emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
+    emitEvent('engine-1.liveNode', 'toolCall', {
+      callId: 'c1',
+      name: 'set_background_color',
+      argumentsJson: '{"color":"red"}',
+    })
+    expect(logged()).toEqual(
+      expect.arrayContaining([
+        'user: Make it red.',
+        'assistant: Sure.',
+        'tool call set_background_color {"color":"red"}',
+      ])
+    )
+  })
+
+  it('logs errors', () => {
+    const toolkit = initialized()
+    toolkit.addErrorListener(() => {})
+    emitEvent('engine-1.liveNode', 'error', { message: 'boom' })
+    expect(logged()).toContain('error SESSION_FAILED (fatal): boom')
+  })
+
+  it('shares the exported file through the share sheet', async () => {
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' })
+    await createOpenAILiveToolkit().shareLogs()
+    expect(share).toHaveBeenCalledWith({
+      url: 'file:///mock/documents/openai-live-toolkit-log.txt',
+    })
+    share.mockRestore()
+  })
+
+  it('shares through the JVM module on Android', async () => {
+    const originalOS = Platform.OS
+    Platform.OS = 'android'
+    const shareFile = jest.fn().mockResolvedValue(undefined)
+    NativeModules.OpenAILiveToolkitAndroid = { shareFile }
+    try {
+      await createOpenAILiveToolkit().shareLogs()
+      expect(shareFile).toHaveBeenCalledWith('/mock/documents/openai-live-toolkit-log.txt')
+    } finally {
+      Platform.OS = originalOS
+      delete NativeModules.OpenAILiveToolkitAndroid
+    }
+  })
+
+  it('rejects when there is no log yet', async () => {
+    native.exportLogFile.mockReturnValue('')
+    await expect(createOpenAILiveToolkit().shareLogs()).rejects.toThrow('No log yet')
   })
 })
 

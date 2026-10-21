@@ -9,6 +9,8 @@ export interface OpenAILiveToolkitAndroidModule {
   /** Resolves true after `ms`, false once replaced by another call or cancelled. Runs in the background. */
   setIdleTimer(ms: number): Promise<boolean>
   cancelIdleTimer(): void
+  /** Open the share sheet with a file from the app's files directory. */
+  shareFile(path: string): Promise<void>
   getConstants(): { documentsPath: string }
 }
 

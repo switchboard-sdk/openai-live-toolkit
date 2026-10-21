@@ -42,6 +42,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `speakerIsolation` | `{ supported, available, enabled, setEnabled }`. `supported`: the build links AICoustics. `available`: supported and a license key was given. Applied live. See [Speaker isolation](getting-started.md#speaker-isolation). |
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `registerTool(tool)`, `unregisterTool(name)` | See [Tools](tools.md). |
+| `shareLogs()` | Opens the share sheet with the log file: the SDK's log and the toolkit's events (sessions, idle and wake, delegations, tool calls, errors and the transcript), about the last 2 MB. Rejects before the toolkit has initialized. |
 
 `appendInstructions`, `addContext` and `say` take up to 500 tokens each.
 

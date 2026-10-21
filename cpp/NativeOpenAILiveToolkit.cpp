@@ -1,6 +1,9 @@
 #include "NativeOpenAILiveToolkit.h"
 
 #include <fstream>
+#include <switchboard_core/Logger.hpp>
+
+#include "LogFile.hpp"
 
 // Switchboard extensions. Each must be loaded once, before any graph that uses
 // it is built — hence the constructor below. Headers resolve via the per-
@@ -75,6 +78,18 @@ bool NativeOpenAILiveToolkit::writeFile(jsi::Runtime& rt, std::string path,
   }
   file << contents;
   return file.good();
+}
+
+void NativeOpenAILiveToolkit::startLogFile(jsi::Runtime& rt, std::string directory) {
+  openailivetoolkit::LogFile::start(directory);
+}
+
+void NativeOpenAILiveToolkit::log(jsi::Runtime& rt, std::string message) {
+  switchboard::Logger::info("[OpenAILiveToolkit] " + message);
+}
+
+std::string NativeOpenAILiveToolkit::exportLogFile(jsi::Runtime& rt) {
+  return openailivetoolkit::LogFile::exportFile();
 }
 
 std::string NativeOpenAILiveToolkit::processCommand(jsi::Runtime& rt,

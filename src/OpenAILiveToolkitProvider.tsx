@@ -17,6 +17,7 @@ import {
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
+import { shareLogs } from './logs'
 
 /**
  * Session connection state. `'idle'` means idle mode closed the session and it reopens
@@ -98,6 +99,8 @@ export interface OpenAILiveToolkitContextValue {
   registerTool: (tool: OpenAILiveToolkitTool) => void
   /** Remove a registered tool by name. */
   unregisterTool: (name: string) => void
+  /** Open the share sheet with the log: the SDK's log and the toolkit's events, transcript included. */
+  shareLogs: () => Promise<void>
 }
 
 const OpenAILiveToolkitContext = createContext<OpenAILiveToolkitContextValue | null>(null)
@@ -389,6 +392,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     setMuted,
     registerTool,
     unregisterTool,
+    shareLogs,
   }
 
   return (

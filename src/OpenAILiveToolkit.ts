@@ -1,6 +1,7 @@
 import { PermissionsAndroid, Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
 import { androidModule } from './androidModule'
+import { log, shareLogs, startLogFile } from './logs'
 import { NativeModuleRPCClient } from './NativeModuleRPCClient'
 import { SwitchboardClient } from './SwitchboardClient'
 import { DEFAULT_DELEGATE_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
@@ -398,14 +399,36 @@ export function createOpenAILiveToolkit() {
   let userSpeaking = false
   let toolCallsInFlight = 0
 
+  // The transcript turn being collected for the log.
+  let turnSpeaker: 'user' | 'assistant' | null = null
+  let turnText = ''
+
   function emitError(
     code: OpenAILiveErrorCode,
     message: string,
     fatal: boolean,
     details?: Record<string, unknown>
   ): void {
+    log(`error ${code}${fatal ? ' (fatal)' : ''}: ${message}`)
     const error = new OpenAILiveError(code, message, fatal, details)
     errorListeners.forEach((l) => l(error))
+  }
+
+  /** Log the transcript a turn at a time: one line per change of speaker. */
+  function logTranscript(speaker: 'user' | 'assistant', delta: string): void {
+    if (speaker !== turnSpeaker) {
+      flushTranscript()
+      turnSpeaker = speaker
+    }
+    turnText += delta
+  }
+
+  function flushTranscript(): void {
+    if (turnSpeaker && turnText.trim() !== '') {
+      log(`${turnSpeaker}: ${turnText.trim()}`)
+    }
+    turnSpeaker = null
+    turnText = ''
   }
 
   /**
@@ -487,6 +510,12 @@ export function createOpenAILiveToolkit() {
         return
       }
     }
+    // After the SDK's initialize, which installs the console log destination the file passes lines on to.
+    startLogFile()
+    log(
+      `initialize: ${transport}, speaker isolation ${isolationAvailable ? 'available' : 'unavailable'}, ` +
+        `idle timeout ${idleTimeoutMs} ms`
+    )
     // Re-adopt an engine that survived the reload so start() reuses it.
     const engines = c.getValue('switchboard', 'engines').result
     engineId = Array.isArray(engines) && engines.length > 0 ? String(engines[0]) : null
@@ -633,6 +662,7 @@ export function createOpenAILiveToolkit() {
       )
     }
     running = true
+    log('engine started')
   }
 
   /**
@@ -702,6 +732,7 @@ export function createOpenAILiveToolkit() {
 
   /** Turn Quail speaker isolation on or off. Applied live. No-op unless it's available. */
   function setSpeakerIsolation(enabled: boolean): void {
+    log(`speaker isolation ${enabled ? 'on' : 'off'}`)
     speakerIsolation = enabled
     if (engineId && isolationAvailable) {
       client?.setValue(ISOLATION_NODE, 'enabled', enabled)
@@ -710,6 +741,7 @@ export function createOpenAILiveToolkit() {
 
   /** Stop the model hearing the microphone, or let it hear again. Kept across sessions. */
   function setMuted(next: boolean): void {
+    log(next ? 'muted' : 'unmuted')
     muted = next
     if (sessionLive) {
       client?.callAction(LIVE_NODE, next ? 'muteInput' : 'unmuteInput')
@@ -773,6 +805,7 @@ export function createOpenAILiveToolkit() {
       const args = call.argumentsJson ? JSON.parse(call.argumentsJson) : {}
       const result = await tool.handler(args)
       params = { callId: call.callId, outputJson: JSON.stringify(result ?? null) }
+      log(`tool ${call.name} returned ${params.outputJson.slice(0, 200)}`)
     } catch (err) {
       emitError('TOOL_HANDLER_FAILED', `Tool '${call.name}' failed: ${String(err)}`, false, {
         tool: call.name,
@@ -806,6 +839,8 @@ export function createOpenAILiveToolkit() {
       if (Platform.OS === 'android') {
         stopAndroidAudioSession()
       }
+      flushTranscript()
+      log('engine stopped')
     }
     running = false
     sessionLive = false
@@ -857,6 +892,8 @@ export function createOpenAILiveToolkit() {
       touch()
       return
     }
+    flushTranscript()
+    log('idle: session ended')
     idle = true
     woken = false
     sessionLive = false
@@ -880,6 +917,7 @@ export function createOpenAILiveToolkit() {
     idle = false
     woken = true
     forking = lastSessionId !== null
+    log(forking ? `wake: forking ${lastSessionId}` : 'wake: new session')
     client?.callAction(LIVE_NODE, 'startSession', forking ? { forkSessionId: lastSessionId } : {})
   }
 
@@ -962,13 +1000,18 @@ export function createOpenAILiveToolkit() {
       return
     }
     switch (event.name) {
-      case 'toolCall':
+      case 'toolCall': {
+        const call = event.data as ToolCall
+        flushTranscript()
+        log(`tool call ${call.name} ${call.argumentsJson ?? ''}`)
         woken = false
-        handleToolCall(event.data as ToolCall)
+        handleToolCall(call)
         break
+      }
       case 'sessionStarted':
         sessionLive = true
         lastSessionId = (event.data as { sessionId?: string } | undefined)?.sessionId || null
+        log(`session started ${lastSessionId}${forking ? ' (fork)' : ''}`)
         // Every session starts unmuted; carry the app's choice over.
         if (muted) {
           client?.callAction(LIVE_NODE, 'muteInput')
@@ -984,15 +1027,23 @@ export function createOpenAILiveToolkit() {
         break
       // An "mm" from a noise restarts the countdown but doesn't show the model was talked to.
       case 'inputTranscriptDelta':
+        logTranscript('user', (event.data as { delta?: string } | undefined)?.delta ?? '')
         touch()
         break
       case 'outputTranscriptDelta':
+        logTranscript('assistant', (event.data as { delta?: string } | undefined)?.delta ?? '')
+        engaged()
+        break
       case 'delegationCreated':
+        flushTranscript()
+        log(`delegation ${JSON.stringify(event.data ?? {})}`)
         engaged()
         break
       case 'sessionStarting':
       case 'sessionDisconnected':
       case 'sessionClosed':
+        flushTranscript()
+        log(`${event.name}${event.data ? ` ${JSON.stringify(event.data)}` : ''}`)
         sessionLive = false
         break
       case 'error': {
@@ -1044,6 +1095,7 @@ export function createOpenAILiveToolkit() {
     unregisterTool,
     stop,
     release,
+    shareLogs,
     /** Whether the engine is started (between {@link start} and {@link stop}). */
     get isRunning(): boolean {
       return running

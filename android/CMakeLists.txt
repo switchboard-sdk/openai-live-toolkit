@@ -15,6 +15,7 @@ set(OPENAILIVETOOLKIT_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cpp")
 # Module name must match react-native.config.js `cxxModuleCMakeListsModuleName`.
 add_library(react-native-openailivetoolkit SHARED
     "${OPENAILIVETOOLKIT_CPP_DIR}/NativeOpenAILiveToolkit.cpp"
+    "${OPENAILIVETOOLKIT_CPP_DIR}/LogFile.cpp"
 )
 
 target_include_directories(react-native-openailivetoolkit PUBLIC "${OPENAILIVETOOLKIT_CPP_DIR}")

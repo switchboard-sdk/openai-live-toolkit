@@ -1,5 +1,6 @@
 package com.synervoz.openailivetoolkit
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.media.AudioDeviceInfo
@@ -8,10 +9,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.RequiresApi
+import androidx.core.content.FileProvider
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import java.io.File
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -149,6 +152,27 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     idleTimer = null
     mainHandler.removeCallbacks(runnable)
     promise.resolve(false)
+  }
+
+  /** Open the share sheet with [path], a file in the app's files directory. */
+  @ReactMethod
+  fun shareFile(path: String, promise: Promise) {
+    try {
+      val context = reactContext.applicationContext
+      val uri = FileProvider.getUriForFile(context, "${context.packageName}.openailivetoolkit.files", File(path))
+      val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        // On the intent's clip data, the read grant carries over to the app picked in the chooser.
+        clipData = ClipData.newRawUri(null, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      val chooser = Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      (reactContext.currentActivity ?: context).startActivity(chooser)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("share_error", e)
+    }
   }
 
   private fun disableCommunicationRoute() {
