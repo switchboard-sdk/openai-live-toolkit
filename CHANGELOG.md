@@ -19,3 +19,4 @@ All notable changes to this project are documented here. The format follows [Kee
 - `idleTimeoutMs`: closes the session during silences and reopens it, forked from the closed one, when the user speaks.
 - `logFile`, `logConversation` and `shareLogs()`: the SDK's log and the toolkit's events, optionally with the conversation, in a file in the caches directory, shared through the share sheet. The example app has a Share logs link.
 - `webSearch`: the delegate can search the web, for weather, news and other current information.
+- `mixWithOthers` and `otherAudioDucking` (iOS): music from other apps keeps playing, lowered only while someone talks.
