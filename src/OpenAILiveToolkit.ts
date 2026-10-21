@@ -1097,15 +1097,16 @@ export function createOpenAILiveToolkit() {
       case 'error': {
         const data = event.data as { type?: string; message?: string } | undefined
         const message = data?.message
-        // A refused fork isn't fatal: the node starts a new session instead.
-        const forkRefused = forking && data?.type === 'invalid_request_error'
-        if (forkRefused) {
+        // A fork that fails, refused or over WebRTC as a failed connection, isn't fatal: the node
+        // starts a new session instead.
+        const forkFailed = forking && !sessionLive
+        if (forkFailed) {
           forking = false
         }
         emitError(
           'SESSION_FAILED',
           message?.trim() ? message : `Session error: ${event.raw}`,
-          !sessionLive && !forkRefused,
+          !sessionLive && !forkFailed,
           { raw }
         )
         break
