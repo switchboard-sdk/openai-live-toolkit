@@ -118,6 +118,15 @@ export interface OpenAILiveToolkitInitializeOptions {
    * Defaults to 5000, capped at {@link idleTimeoutMs}; 0 turns it off.
    */
   wakeGraceMs?: number
+  /**
+   * Let the delegate search the web (OpenAI's hosted web search), so the model can answer about
+   * weather, news and other current information. Off by default; each search is billed.
+   */
+  webSearch?: boolean
+  /** Also write the SDK's log and the toolkit's events to a file, for {@link shareLogs}. Off by default. */
+  logFile?: boolean
+  /** Include the transcript and tool arguments and results in the log. Off by default. */
+  logConversation?: boolean
 }
 
 /**
@@ -177,6 +186,12 @@ interface ToolDef {
   parameters: object
 }
 
+/** OpenAI's hosted web search, which the delegate runs itself. */
+const WEB_SEARCH_TOOL = { type: 'web_search' } as const
+
+/** What the Live node gets as the delegate's tools. */
+type DelegateTool = ToolDef | typeof WEB_SEARCH_TOOL
+
 /** Payload of a `toolCall` event from the Live node. */
 interface ToolCall {
   callId: string
@@ -207,12 +222,23 @@ const DELEGATE_INSTRUCTIONS =
   'tool; never claim an action is done without calling it.'
 
 /** What the live model is told about the registered tools. Empty with no tools. */
-export function toolsNote(tools: readonly { name: string; description: string }[]): string {
-  if (tools.length === 0) {
-    return ''
+export function toolsNote(
+  tools: readonly { name: string; description: string }[],
+  webSearch = false
+): string {
+  const parts: string[] = []
+  if (tools.length > 0) {
+    const list = tools.map((t) => `${t.name} (${t.description})`).join('; ')
+    parts.push(
+      `You can act in the app through tools: ${list}. Use them whenever the user asks for one of these.`
+    )
   }
-  const list = tools.map((t) => `${t.name} (${t.description})`).join('; ')
-  return `You can act in the app through tools: ${list}. Use them whenever the user asks for one of these.`
+  if (webSearch) {
+    parts.push(
+      'For current information like weather or news, delegate: the delegate can search the web.'
+    )
+  }
+  return parts.join(' ')
 }
 
 function joinInstructions(...parts: string[]): string {
@@ -228,7 +254,7 @@ function joinInstructions(...parts: string[]): string {
 function buildLiveEngine(
   transport: OpenAILiveTransport,
   apiKey: string,
-  tools: ToolDef[],
+  tools: DelegateTool[],
   session: {
     model: string
     voice: OpenAIVoice
@@ -290,7 +316,13 @@ function buildLiveEngine(
         ...(transport === 'websocket' ? { apiKey } : {}),
         model: session.model,
         voice: session.voice,
-        instructions: joinInstructions(session.instructions, toolsNote(tools)),
+        instructions: joinInstructions(
+          session.instructions,
+          toolsNote(
+            tools.filter((t): t is ToolDef => t.type === 'function'),
+            tools.includes(WEB_SEARCH_TOOL)
+          )
+        ),
         // Always Responses delegation, so tools can be added or removed on a live
         // session. The delegate only runs (and bills) when the model hands it work.
         delegation: 'responses',
@@ -399,6 +431,8 @@ export function createOpenAILiveToolkit() {
   let userSpeaking = false
   let toolCallsInFlight = 0
 
+  let webSearch = false
+  let logConversation = false
   // The transcript turn being collected for the log.
   let turnSpeaker: 'user' | 'assistant' | null = null
   let turnText = ''
@@ -416,6 +450,9 @@ export function createOpenAILiveToolkit() {
 
   /** Log the transcript a turn at a time: one line per change of speaker. */
   function logTranscript(speaker: 'user' | 'assistant', delta: string): void {
+    if (!logConversation) {
+      return
+    }
     if (speaker !== turnSpeaker) {
       flushTranscript()
       turnSpeaker = speaker
@@ -483,6 +520,8 @@ export function createOpenAILiveToolkit() {
     speakerIsolation = options.speakerIsolation ?? true
     idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
     wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
+    webSearch = options.webSearch ?? false
+    logConversation = options.logConversation ?? false
 
     const apiUrl = options.apiUrl?.trim() ?? ''
     const c = ensureClient()
@@ -511,7 +550,9 @@ export function createOpenAILiveToolkit() {
       }
     }
     // After the SDK's initialize, which installs the console log destination the file passes lines on to.
-    startLogFile()
+    if (options.logFile) {
+      startLogFile()
+    }
     log(
       `initialize: ${transport}, speaker isolation ${isolationAvailable ? 'available' : 'unavailable'}, ` +
         `idle timeout ${idleTimeoutMs} ms`
@@ -622,14 +663,14 @@ export function createOpenAILiveToolkit() {
     // Create the engine once; start/stop reuse it, release() frees it.
     let id = engineId
     if (!id) {
-      lastWrittenToolsNote = toolsNote(toolDefs())
+      lastWrittenToolsNote = toolsNote(toolDefs(), webSearch)
       const res = c.callAction(
         'switchboard',
         'createEngine',
         buildLiveEngine(
           transport,
           openAIApiKey,
-          toolDefs(),
+          delegateTools(),
           session,
           { available: isolationAvailable, enabled: speakerIsolation },
           idleTimeoutMs > 0
@@ -675,14 +716,14 @@ export function createOpenAILiveToolkit() {
     // A fork keeps the stored session's instructions, so the next wake starts fresh.
     lastSessionId = null
     if (engineId) {
-      lastWrittenToolsNote = toolsNote(toolDefs())
+      lastWrittenToolsNote = toolsNote(toolDefs(), webSearch)
       client?.setValue(LIVE_NODE, 'instructions', liveInstructions())
     }
   }
 
   /** The live model's instructions: the app's prompt plus the note about the current tools. */
   function liveInstructions(): string {
-    return joinInstructions(session.instructions, toolsNote(toolDefs()))
+    return joinInstructions(session.instructions, toolsNote(toolDefs(), webSearch))
   }
 
   /**
@@ -690,7 +731,7 @@ export function createOpenAILiveToolkit() {
    * when a session starts, so a change is sent as appended instructions instead.
    */
   function syncToolsNote(): void {
-    const note = toolsNote(toolDefs())
+    const note = toolsNote(toolDefs(), webSearch)
     if (!sessionLive || note === sessionToolsNote) {
       return
     }
@@ -756,7 +797,7 @@ export function createOpenAILiveToolkit() {
   function registerTool(tool: OpenAILiveToolkitTool): void {
     tools.set(tool.name, tool)
     if (engineId) {
-      client?.setValue(LIVE_NODE, 'tools', toolDefs())
+      client?.setValue(LIVE_NODE, 'tools', delegateTools())
       syncToolsNote()
     }
   }
@@ -764,12 +805,17 @@ export function createOpenAILiveToolkit() {
   /** Remove a registered tool by name; no-op if it isn't registered. */
   function unregisterTool(name: string): void {
     if (tools.delete(name) && engineId) {
-      client?.setValue(LIVE_NODE, 'tools', toolDefs())
+      client?.setValue(LIVE_NODE, 'tools', delegateTools())
       syncToolsNote()
     }
   }
 
   /** Function definitions for the registered tools (handlers stripped). */
+  /** The registered tools, plus web search when it's on. */
+  function delegateTools(): DelegateTool[] {
+    return webSearch ? [...toolDefs(), WEB_SEARCH_TOOL] : toolDefs()
+  }
+
   function toolDefs(): ToolDef[] {
     return Array.from(tools.values()).map((t) => ({
       type: 'function' as const,
@@ -805,7 +851,9 @@ export function createOpenAILiveToolkit() {
       const args = call.argumentsJson ? JSON.parse(call.argumentsJson) : {}
       const result = await tool.handler(args)
       params = { callId: call.callId, outputJson: JSON.stringify(result ?? null) }
-      log(`tool ${call.name} returned ${params.outputJson.slice(0, 200)}`)
+      log(
+        `tool ${call.name} returned${logConversation ? ` ${params.outputJson.slice(0, 200)}` : ''}`
+      )
     } catch (err) {
       emitError('TOOL_HANDLER_FAILED', `Tool '${call.name}' failed: ${String(err)}`, false, {
         tool: call.name,
@@ -1003,7 +1051,7 @@ export function createOpenAILiveToolkit() {
       case 'toolCall': {
         const call = event.data as ToolCall
         flushTranscript()
-        log(`tool call ${call.name} ${call.argumentsJson ?? ''}`)
+        log(`tool call ${call.name}${logConversation ? ` ${call.argumentsJson ?? ''}` : ''}`)
         woken = false
         handleToolCall(call)
         break

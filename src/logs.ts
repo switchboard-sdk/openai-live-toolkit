@@ -10,9 +10,17 @@ export function documentsPath(): string {
   return NativeOpenAILiveToolkit.getDocumentsPath()
 }
 
-/** Write the SDK's log, and the toolkit's lines in it, to a file in the documents directory too. */
+/** The caches directory, which neither platform backs up. */
+function cachePath(): string {
+  if (Platform.OS === 'android') {
+    return androidModule()?.getConstants?.().cachePath ?? ''
+  }
+  return NativeOpenAILiveToolkit.getCachePath()
+}
+
+/** Write the SDK's log, and the toolkit's lines in it, to a file in the caches directory too. */
 export function startLogFile(): void {
-  NativeOpenAILiveToolkit.startLogFile(documentsPath())
+  NativeOpenAILiveToolkit.startLogFile(cachePath())
 }
 
 /** Add a line to the log. */
@@ -27,7 +35,7 @@ export function log(message: string): void {
 export async function shareLogs(): Promise<void> {
   const path = NativeOpenAILiveToolkit.exportLogFile()
   if (path === '') {
-    throw new Error('No log yet: it starts when the toolkit initializes.')
+    throw new Error('No log: initialize the toolkit with logFile on.')
   }
   const android = Platform.OS === 'android' ? androidModule() : undefined
   if (android) {

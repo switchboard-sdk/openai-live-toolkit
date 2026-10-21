@@ -840,13 +840,32 @@ describe('idle mode', () => {
 })
 
 describe('logs', () => {
-  it('starts the log file in the documents directory', () => {
+  const LOGGED = { ...CREDS, logFile: true }
+
+  it('writes no log file unless asked', () => {
     initialized()
-    expect(native.startLogFile).toHaveBeenCalledWith('/mock/documents')
+    expect(native.startLogFile).not.toHaveBeenCalled()
   })
 
-  it('logs the transcript a turn at a time, and tool calls', async () => {
-    await running()
+  it('starts the log file in the caches directory', () => {
+    initialized(LOGGED)
+    expect(native.startLogFile).toHaveBeenCalledWith('/mock/caches')
+  })
+
+  it('logs tool names but not the conversation by default', async () => {
+    await running(LOGGED)
+    emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'Make it crimson.' })
+    emitEvent('engine-1.liveNode', 'toolCall', {
+      callId: 'c1',
+      name: 'set_background_color',
+      argumentsJson: '{"color":"crimson"}',
+    })
+    expect(logged()).toContain('tool call set_background_color')
+    expect(logged().join('\n')).not.toContain('crimson')
+  })
+
+  it('logs the transcript a turn at a time, and tool arguments, with logConversation', async () => {
+    await running({ ...LOGGED, logConversation: true })
     emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'Make it' })
     emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: ' red.' })
     emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
@@ -874,9 +893,7 @@ describe('logs', () => {
   it('shares the exported file through the share sheet', async () => {
     const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' })
     await createOpenAILiveToolkit().shareLogs()
-    expect(share).toHaveBeenCalledWith({
-      url: 'file:///mock/documents/openai-live-toolkit-log.txt',
-    })
+    expect(share).toHaveBeenCalledWith({ url: 'file:///mock/caches/openai-live-toolkit-log.txt' })
     share.mockRestore()
   })
 
@@ -887,16 +904,37 @@ describe('logs', () => {
     NativeModules.OpenAILiveToolkitAndroid = { shareFile }
     try {
       await createOpenAILiveToolkit().shareLogs()
-      expect(shareFile).toHaveBeenCalledWith('/mock/documents/openai-live-toolkit-log.txt')
+      expect(shareFile).toHaveBeenCalledWith('/mock/caches/openai-live-toolkit-log.txt')
     } finally {
       Platform.OS = originalOS
       delete NativeModules.OpenAILiveToolkitAndroid
     }
   })
 
-  it('rejects when there is no log yet', async () => {
+  it('rejects when there is no log file', async () => {
     native.exportLogFile.mockReturnValue('')
-    await expect(createOpenAILiveToolkit().shareLogs()).rejects.toThrow('No log yet')
+    await expect(createOpenAILiveToolkit().shareLogs()).rejects.toThrow('logFile on')
+  })
+})
+
+describe('web search', () => {
+  it('is off by default', async () => {
+    await running()
+    expect(liveNodeConfig().tools).not.toContainEqual({ type: 'web_search' })
+  })
+
+  it('gives the delegate web search and tells the model about it', async () => {
+    await running({ ...CREDS, webSearch: true })
+    expect(liveNodeConfig().tools).toContainEqual({ type: 'web_search' })
+    expect(liveNodeConfig().instructions).toContain('the delegate can search the web')
+  })
+
+  it('keeps web search when tools change', async () => {
+    const toolkit = await running({ ...CREDS, webSearch: true })
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    expect(setValuesFor('liveNode', 'tools').pop().params.value).toContainEqual({
+      type: 'web_search',
+    })
   })
 })
 

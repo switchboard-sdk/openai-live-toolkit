@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The files directory, which holds the toolkit's log. -->
+<!-- The cache directory, which holds the toolkit's log. -->
 <paths>
-    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
 </paths>

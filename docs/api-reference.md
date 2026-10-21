@@ -21,6 +21,9 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `speakerIsolation` | `true` | Start with Quail on, when it's available. |
 | `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
 | `wakeGraceMs` | `5000` | After a wake, close again after this long unless the model replies. Capped at `idleTimeoutMs`; `0` turns it off. |
+| `webSearch` | `false` | Give the delegate OpenAI's hosted web search, so the model can answer about weather, news and other current information. Each search is billed. |
+| `logFile` | `false` | Write the SDK's log and the toolkit's events (sessions, idle and wake, delegations, tool calls, errors) to a file in the caches directory, for `shareLogs()`. |
+| `logConversation` | `false` | Include the transcript and tool arguments and results in that log. |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
 ## `useOpenAILiveToolkit()`
@@ -42,7 +45,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `speakerIsolation` | `{ supported, available, enabled, setEnabled }`. `supported`: the build links AICoustics. `available`: supported and a license key was given. Applied live. See [Speaker isolation](getting-started.md#speaker-isolation). |
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `registerTool(tool)`, `unregisterTool(name)` | See [Tools](tools.md). |
-| `shareLogs()` | Opens the share sheet with the log file: the SDK's log and the toolkit's events (sessions, idle and wake, delegations, tool calls, errors and the transcript), about the last 2 MB. Rejects before the toolkit has initialized. |
+| `shareLogs()` | Opens the share sheet with the log file, about the last 2 MB. Rejects unless the provider has `logFile` on. |
 
 `appendInstructions`, `addContext` and `say` take up to 500 tokens each.
 

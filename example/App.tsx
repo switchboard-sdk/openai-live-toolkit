@@ -49,7 +49,11 @@ export default function App(): React.JSX.Element {
         apiUrl={SWITCHBOARD_API_URL}
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
         instructions={INSTRUCTIONS}
-        idleTimeoutMs={IDLE_TIMEOUT_MS}>
+        idleTimeoutMs={IDLE_TIMEOUT_MS}
+        webSearch
+        // A testing app: keep the conversation in the log, for Share logs.
+        logFile
+        logConversation>
         <Screen />
       </OpenAILiveToolkitProvider>
     </SafeAreaProvider>
@@ -153,7 +157,7 @@ function Screen(): React.JSX.Element {
         <ScrollView ref={scrollRef}>
           {transcript.length === 0 ? (
             <Text style={styles.hint}>
-              Talk over it, ask it to change the background color, or ask the time.
+              Talk over it, ask it to change the background color, ask the time, or ask about the weather.
             </Text>
           ) : (
             transcript.map((entry) => (

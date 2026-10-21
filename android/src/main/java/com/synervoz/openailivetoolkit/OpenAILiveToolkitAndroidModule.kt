@@ -32,7 +32,10 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
   override fun getName() = NAME
 
   override fun getConstants(): Map<String, Any> =
-    mapOf("documentsPath" to reactContext.filesDir.absolutePath)
+    mapOf(
+      "documentsPath" to reactContext.filesDir.absolutePath,
+      "cachePath" to reactContext.cacheDir.absolutePath,
+    )
 
   private val audioManager: AudioManager
     get() = reactContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -154,7 +157,7 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     promise.resolve(false)
   }
 
-  /** Open the share sheet with [path], a file in the app's files directory. */
+  /** Open the share sheet with [path], a file in the app's cache directory. */
   @ReactMethod
   fun shareFile(path: String, promise: Promise) {
     try {

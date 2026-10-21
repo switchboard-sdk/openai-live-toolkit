@@ -25,6 +25,9 @@ export interface Spec extends TurboModule {
   /** Whether this build links the AICoustics extension (opt-in at `pod install`). */
   readonly isSpeakerIsolationSupported: () => boolean
 
+  /** Absolute path to the app's caches directory, which isn't backed up. */
+  readonly getCachePath: () => string
+
   /** Also write the SDK's log to a file in `directory`. Once per process; later calls do nothing. */
   readonly startLogFile: (directory: string) => void
 

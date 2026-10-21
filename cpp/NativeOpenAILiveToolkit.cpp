@@ -36,10 +36,19 @@ NativeOpenAILiveToolkit::NativeOpenAILiveToolkit(std::shared_ptr<CallInvoker> js
 }
 
 static std::string s_documentsPath;
+static std::string s_cachePath;
 static MicrophonePermissionHook s_micPermissionHook;
 
 void NativeOpenAILiveToolkit::setDocumentsPath(const std::string& path) {
   s_documentsPath = path;
+}
+
+void NativeOpenAILiveToolkit::setCachePath(const std::string& path) {
+  s_cachePath = path;
+}
+
+std::string NativeOpenAILiveToolkit::getCachePath(jsi::Runtime& rt) {
+  return s_cachePath;
 }
 
 void NativeOpenAILiveToolkit::setMicrophonePermissionHook(MicrophonePermissionHook hook) {
