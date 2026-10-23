@@ -50,6 +50,7 @@ export default function App(): React.JSX.Element {
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
         instructions={INSTRUCTIONS}
         idleTimeoutMs={IDLE_TIMEOUT_MS}
+        continueAfterStop
         webSearch
         // A testing app: keep the conversation in the log, for Share logs.
         logFile

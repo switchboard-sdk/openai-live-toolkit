@@ -992,6 +992,57 @@ describe('stop / release', () => {
     expect(commandsFor('createEngine')).toHaveLength(1)
   })
 
+  function forkSessionIds(): string[] {
+    return setValuesFor('liveNode', 'forkSessionId').map((c) => c.params.value)
+  }
+
+  const CONTINUE = { ...CREDS, continueAfterStop: true }
+
+  it('start begins a new conversation, without storing sessions, by default', async () => {
+    const toolkit = await running()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual([])
+    expect(liveNodeConfig().store).toBe(false)
+  })
+
+  it('with continueAfterStop, start continues the conversation a stop closed', async () => {
+    const toolkit = await running(CONTINUE)
+    expect(liveNodeConfig().store).toBe(true)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual(['', 's1'])
+    expect(native.log).toHaveBeenCalledWith('start: forking s1')
+  })
+
+  it('treats a fork on start that fails as non-fatal', async () => {
+    const toolkit = await running(CONTINUE)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    await toolkit.start()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'invalid_request_error',
+      message: 'The stored session was not found.',
+    })
+    expect(errors.map((e) => e.fatal)).toEqual([false])
+  })
+
+  it('start after setInstructions or release begins a new conversation', async () => {
+    const toolkit = await running(CONTINUE)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    toolkit.setInstructions('Be brief.')
+    await toolkit.start()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    toolkit.release()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual(['', '', ''])
+  })
+
   it('throws and stays running when the engine refuses to stop', async () => {
     const toolkit = await running()
     scriptNative(() => makeRpcResponse(undefined, { code: -1, message: 'nope' }))

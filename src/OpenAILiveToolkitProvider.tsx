@@ -153,6 +153,11 @@ export interface OpenAILiveToolkitProviderProps {
    */
   wakeGraceMs?: number
   /**
+   * `start` after `stop` continues the conversation, forking the session the stop closed. While on,
+   * OpenAI stores each session. Off by default. Fixed once initialized.
+   */
+  continueAfterStop?: boolean
+  /**
    * Let the delegate search the web, so the model can answer about weather, news and other
    * current information. Off by default; each search is billed. Fixed once initialized.
    */
@@ -229,6 +234,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       speakerIsolation: isolationEnabled,
       idleTimeoutMs: props.idleTimeoutMs,
       wakeGraceMs: props.wakeGraceMs,
+      continueAfterStop: props.continueAfterStop,
       webSearch: props.webSearch,
       logFile: props.logFile,
       logConversation: props.logConversation,

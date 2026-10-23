@@ -21,6 +21,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `speakerIsolation` | `true` | Start with Quail on, when it's available. |
 | `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
 | `wakeGraceMs` | `5000` | After a wake, close again after this long unless the model replies. Capped at `idleTimeoutMs`; `0` turns it off. |
+| `continueAfterStop` | `false` | `start()` after `stop()` continues the conversation, forking the session the stop closed. While on, OpenAI stores each session. |
 | `webSearch` | `false` | Give the delegate OpenAI's hosted web search, so the model can answer about weather, news and other current information. Each search is billed. |
 | `logFile` | `false` | Write the SDK's log and the toolkit's events (sessions, idle and wake, delegations, tool calls, errors) to a file in the caches directory, for `shareLogs()`. |
 | `logConversation` | `false` | Include the transcript and tool arguments and results in that log. |
@@ -33,7 +34,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `isRunning` | Engine started. |
 | `connectionStatus` | `'none' \| 'connecting' \| 'connected' \| 'idle' \| 'error'`. `'idle'`: idle mode closed the session and it reopens on speech. `'error'` stays until a session comes up. |
 | `error` | Outstanding fatal `OpenAILiveError`, or null. |
-| `start()`, `stop()`, `release()` | Start opens a session; stop closes it and keeps the engine; release frees it. |
+| `start()`, `stop()`, `release()` | Start opens a session, continuing the conversation a stop closed with `continueAfterStop`; stop closes it and keeps the engine; release frees it. |
 | `hasMicrophonePermission`, `requestMicrophonePermission()` | `start()` requests it automatically. |
 | `transcript`, `clearTranscript()` | `TranscriptEntry[]`: `{ id, speaker: 'user' \| 'assistant', text, startMs, endMs }`, in the order things were said. A new line starts whenever the speaker changes. |
 | `instructions`, `setInstructions(text)` | Fixed per session: while running this starts a new session and drops the conversation. |

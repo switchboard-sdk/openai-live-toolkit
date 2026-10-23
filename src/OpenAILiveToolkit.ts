@@ -119,6 +119,11 @@ export interface OpenAILiveToolkitInitializeOptions {
    */
   wakeGraceMs?: number
   /**
+   * `start()` after `stop()` continues the conversation: the new session forks the one the stop
+   * closed. While on, OpenAI stores each session. Off by default.
+   */
+  continueAfterStop?: boolean
+  /**
    * Let the delegate search the web (OpenAI's hosted web search), so the model can answer about
    * weather, news and other current information. Off by default; each search is billed.
    */
@@ -263,7 +268,8 @@ function buildLiveEngine(
     delegateInstructions: string
   },
   isolation: { available: boolean; enabled: boolean },
-  idleMode: boolean
+  idleMode: boolean,
+  store: boolean
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -333,7 +339,7 @@ function buildLiveEngine(
         ),
         tools,
         // A closed session can only be continued if OpenAI stored it.
-        store: idleMode,
+        store,
       },
     },
     { id: 'monoToMultiChannelNode', type: 'Switchboard.MonoToMultiChannel' }
@@ -419,6 +425,7 @@ export function createOpenAILiveToolkit() {
   // Idle mode. 0 is off.
   let idleTimeoutMs = 0
   let wakeGraceMs = DEFAULT_WAKE_GRACE_MS
+  let continueAfterStop = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   // The session was closed for idling and reopens when the user speaks.
   let idle = false
@@ -520,6 +527,7 @@ export function createOpenAILiveToolkit() {
     speakerIsolation = options.speakerIsolation ?? true
     idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
     wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
+    continueAfterStop = options.continueAfterStop ?? false
     webSearch = options.webSearch ?? false
     logConversation = options.logConversation ?? false
 
@@ -673,7 +681,8 @@ export function createOpenAILiveToolkit() {
           delegateTools(),
           session,
           { available: isolationAvailable, enabled: speakerIsolation },
-          idleTimeoutMs > 0
+          idleTimeoutMs > 0,
+          idleTimeoutMs > 0 || continueAfterStop
         )
       )
       id = res.result as string
@@ -690,6 +699,15 @@ export function createOpenAILiveToolkit() {
     // Before the streams open, so AEC engages on the loudspeaker.
     if (Platform.OS === 'android') {
       await startAndroidAudioSession()
+    }
+    // With continueAfterStop the graph start forks the session the last stop closed. Set even with
+    // nothing to fork, so a fork left over from a failed start doesn't apply.
+    forking =
+      continueAfterStop &&
+      !c.setValue(LIVE_NODE, 'forkSessionId', lastSessionId ?? '').error &&
+      lastSessionId !== null
+    if (forking) {
+      log(`start: forking ${lastSessionId}`)
     }
     const startRes = c.callAction(id, 'start')
     if (startRes.error) {
@@ -893,6 +911,10 @@ export function createOpenAILiveToolkit() {
     running = false
     sessionLive = false
     resetIdle()
+    // Otherwise kept for the next start to fork.
+    if (!continueAfterStop) {
+      lastSessionId = null
+    }
     return null
   }
 
@@ -980,13 +1002,12 @@ export function createOpenAILiveToolkit() {
     idle = false
     woken = false
     forking = false
-    lastSessionId = null
     userSpeaking = false
   }
 
   /**
    * Stop the engine (closing the session), keeping it for a fast restart via
-   * {@link start}. {@link release} frees it.
+   * {@link start}, which continues the conversation with `continueAfterStop`. {@link release} frees it.
    * @throws {OpenAILiveError} if the engine refuses to stop.
    */
   function stop(): void {
@@ -996,9 +1017,10 @@ export function createOpenAILiveToolkit() {
     }
   }
 
-  /** Stop and free the engine. The next {@link start} rebuilds it. */
+  /** Stop and free the engine. The next {@link start} rebuilds it, with a new conversation. */
   function release(): void {
     haltGraph()
+    lastSessionId = null
     if (client && engineId) {
       client.callAction('switchboard', 'destroyEngine', { engineID: engineId })
       engineId = null

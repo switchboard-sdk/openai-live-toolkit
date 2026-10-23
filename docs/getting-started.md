@@ -135,7 +135,7 @@ mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → speak
 
 Without speaker isolation the resamplers and Quail are left out: `mic → mono → OpenAI.Live → speaker`.
 
-The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session.
+The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session. Starting again begins a new conversation, unless `continueAfterStop` is set: then the new session forks the one the stop closed, and OpenAI stores each session for this. After `release()`, or a change to the instructions or voice, the next session starts fresh either way.
 
 ## Idle mode
 
