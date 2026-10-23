@@ -21,6 +21,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   OpenAILiveToolkitProvider,
   useOpenAILiveToolkit,
@@ -38,6 +39,12 @@ const INSTRUCTIONS =
   'You are a terse, friendly voice assistant. Keep answers to one sentence.';
 // Close the session after this much silence; speaking reopens it.
 const IDLE_TIMEOUT_MS = 15_000;
+// The last conversation, which Start continues after the app was killed, unless it's older than
+// MAX_RESUME_AGE_MS.
+const SAVED_CONVERSATION_KEY = 'savedConversation';
+const MAX_RESUME_AGE_MS = 24 * 60 * 60 * 1000;
+
+type SavedConversation = { sessionId: string; savedAt: number; settings: string };
 
 export default function App(): React.JSX.Element {
   return (
@@ -50,7 +57,7 @@ export default function App(): React.JSX.Element {
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
         instructions={INSTRUCTIONS}
         idleTimeoutMs={IDLE_TIMEOUT_MS}
-        continueAfterStop
+        continueConversation
         webSearch
         // A testing app: keep the conversation in the log, for Share logs.
         logFile
@@ -70,6 +77,10 @@ function Screen(): React.JSX.Element {
     clearTranscript,
     start,
     stop,
+    sessionId,
+    newConversation,
+    instructions,
+    voice,
     speakerIsolation,
     muted,
     setMuted,
@@ -78,10 +89,59 @@ function Screen(): React.JSX.Element {
 
   const [backgroundColor, setBackgroundColor] = useState(colors.bg);
   const scrollRef = useRef<ScrollView>(null);
+  // A fork keeps the instructions and voice it started with, so a saved conversation is only
+  // resumed while they're unchanged.
+  const settings = JSON.stringify({ instructions, voice });
+  // Saved by an earlier launch; the first start continues it.
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
+  const [resumed, setResumed] = useState(false);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [transcript]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SAVED_CONVERSATION_KEY)
+      .then((raw) => {
+        const saved: SavedConversation | null = raw ? JSON.parse(raw) : null;
+        if (
+          !saved ||
+          saved.settings !== settings ||
+          Date.now() - saved.savedAt > MAX_RESUME_AGE_MS
+        ) {
+          return;
+        }
+        setSavedSessionId(saved.sessionId);
+      })
+      .catch((e) => console.warn(`Couldn't read the saved conversation: ${e}`));
+    // Only at launch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+    const saved: SavedConversation = { sessionId, savedAt: Date.now(), settings };
+    AsyncStorage.setItem(SAVED_CONVERSATION_KEY, JSON.stringify(saved)).catch((e) =>
+      console.warn(`Couldn't save the conversation: ${e}`),
+    );
+  }, [sessionId, settings]);
+
+  const startTalking = () => {
+    setResumed(savedSessionId !== null);
+    setSavedSessionId(null);
+    start(savedSessionId ? { continueSessionId: savedSessionId } : undefined);
+  };
+
+  const startNewConversation = () => {
+    newConversation();
+    setSavedSessionId(null);
+    setResumed(false);
+    AsyncStorage.removeItem(SAVED_CONVERSATION_KEY).catch((e) =>
+      console.warn(`Couldn't forget the saved conversation: ${e}`),
+    );
+  };
 
   useTool({
     name: 'set_background_color',
@@ -158,7 +218,11 @@ function Screen(): React.JSX.Element {
         <ScrollView ref={scrollRef}>
           {transcript.length === 0 ? (
             <Text style={styles.hint}>
-              Talk over it, ask it to change the background color, ask the time, or ask about the weather.
+              {savedSessionId
+                ? 'Start continues your last conversation.'
+                : resumed
+                  ? 'Continuing your last conversation.'
+                  : 'Talk over it, ask it to change the background color, ask the time, or ask about the weather.'}
             </Text>
           ) : (
             transcript.map((entry) => (
@@ -173,13 +237,20 @@ function Screen(): React.JSX.Element {
         </ScrollView>
       </View>
 
-      <TouchableOpacity
-        style={[styles.talkButton, isRunning && styles.talkButtonActive]}
-        onPress={isRunning ? stop : start}>
-        <Text style={styles.buttonText}>
-          {isRunning ? 'Stop talking' : 'Start talking'}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.controls}>
+        <TouchableOpacity
+          style={[styles.talkButton, isRunning && styles.talkButtonActive]}
+          onPress={isRunning ? stop : startTalking}>
+          <Text style={styles.buttonText}>
+            {isRunning ? 'Stop talking' : 'Start talking'}
+          </Text>
+        </TouchableOpacity>
+        {savedSessionId || sessionId ? (
+          <TouchableOpacity onPress={startNewConversation}>
+            <Text style={[styles.link, styles.centered]}>New conversation</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -194,6 +265,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   talkButtonActive: { backgroundColor: colors.danger },
+  controls: { gap: 12 },
+  centered: { textAlign: 'center' },
   buttonText: { color: colors.white, fontSize: 16, fontWeight: '600' },
   error: { color: colors.danger, fontSize: 13 },
   section: {

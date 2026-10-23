@@ -11,6 +11,7 @@ import {
   openAILiveToolkit,
   OpenAILiveError,
   type OpenAILiveErrorCode,
+  type OpenAILiveStartOptions,
   type OpenAILiveToolkit,
   type OpenAILiveToolkitTool,
   type OpenAILiveTransport,
@@ -59,12 +60,25 @@ export interface OpenAILiveToolkitContextValue {
   transcript: TranscriptEntry[]
   /** Clear {@link transcript}. */
   clearTranscript: () => void
-  /** Start the engine and open a session (ensures mic permission first). */
-  start: () => Promise<void>
+  /**
+   * Start the engine and open a session (ensures mic permission first). With
+   * `continueConversation`, `continueSessionId` continues a session the app saved.
+   */
+  start: (options?: OpenAILiveStartOptions) => Promise<void>
   /** Stop the engine and close the session, keeping the engine for a fast restart. */
   stop: () => void
   /** Stop and fully release the engine. The next start() rebuilds it. */
   release: () => void
+  /**
+   * The latest session's id, for the app to save and pass to `start` as `continueSessionId`.
+   * Null before the first session and after {@link newConversation}.
+   */
+  sessionId: string | null
+  /**
+   * Forget the conversation and clear {@link transcript}, so the next session starts fresh. A
+   * session that's up is replaced by a new one now.
+   */
+  newConversation: () => void
   /** Whether microphone permission is granted; `null` until first checked. */
   hasMicrophonePermission: boolean | null
   /** Request microphone permission. Called automatically by {@link start}. */
@@ -153,10 +167,11 @@ export interface OpenAILiveToolkitProviderProps {
    */
   wakeGraceMs?: number
   /**
-   * `start` after `stop` continues the conversation, forking the session the stop closed. While on,
-   * OpenAI stores each session. Off by default. Fixed once initialized.
+   * Continue the conversation when a session reopens: `start` after `stop` forks the session the
+   * stop closed, and `start({ continueSessionId })` forks one the app saved. While on, OpenAI
+   * stores each session. Off by default. Fixed once initialized.
    */
-  continueAfterStop?: boolean
+  continueConversation?: boolean
   /**
    * Let the delegate search the web, so the model can answer about weather, news and other
    * current information. Off by default; each search is billed. Fixed once initialized.
@@ -192,6 +207,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     'none'
   )
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const entryIdRef = useRef(0)
   // Shift applied to the current session's fragment times, so a new session (whose timeline
   // restarts at 0) continues after the existing transcript.
@@ -234,7 +250,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       speakerIsolation: isolationEnabled,
       idleTimeoutMs: props.idleTimeoutMs,
       wakeGraceMs: props.wakeGraceMs,
-      continueAfterStop: props.continueAfterStop,
+      continueConversation: props.continueConversation,
       webSearch: props.webSearch,
       logFile: props.logFile,
       logConversation: props.logConversation,
@@ -253,6 +269,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
         case 'sessionStarted':
           setSessionState('connected')
           setError(null)
+          setSessionId((e.data as { sessionId?: string } | undefined)?.sessionId || null)
           // Read and set inside the updater so it's ordered with the fragment updates below.
           setTranscript((entries) => {
             timelineOffsetRef.current = nextSessionOffset(entries)
@@ -305,21 +322,24 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     }
   }, [])
 
-  const start = useCallback(async () => {
-    setError(null)
-    try {
-      if (!(await requestMicrophonePermission())) {
-        reportError(
-          new OpenAILiveError('MIC_PERMISSION_DENIED', 'Microphone permission denied', true)
-        )
-        return
+  const start = useCallback(
+    async (options?: OpenAILiveStartOptions) => {
+      setError(null)
+      try {
+        if (!(await requestMicrophonePermission())) {
+          reportError(
+            new OpenAILiveError('MIC_PERMISSION_DENIED', 'Microphone permission denied', true)
+          )
+          return
+        }
+        await toolkitRef.current?.start(options)
+        setIsRunning(true)
+      } catch (err) {
+        reportError(asLiveError(err, 'ENGINE_START_FAILED'))
       }
-      await toolkitRef.current?.start()
-      setIsRunning(true)
-    } catch (err) {
-      reportError(asLiveError(err, 'ENGINE_START_FAILED'))
-    }
-  }, [requestMicrophonePermission, reportError])
+    },
+    [requestMicrophonePermission, reportError]
+  )
 
   const stop = useCallback(() => {
     try {
@@ -341,6 +361,12 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   }, [])
 
   const clearTranscript = useCallback(() => setTranscript([]), [])
+
+  const newConversation = useCallback(() => {
+    toolkitRef.current?.newConversation()
+    setSessionId(null)
+    setTranscript([])
+  }, [])
 
   const setInstructions = useCallback((next: string) => {
     setInstructionsState(next)
@@ -390,6 +416,8 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     start,
     stop,
     release,
+    sessionId,
+    newConversation,
     hasMicrophonePermission,
     requestMicrophonePermission,
     instructions,

@@ -20,7 +20,11 @@ export type {
   OpenAILiveToolkitConnectionStatus,
   SpeakerIsolation,
 } from './OpenAILiveToolkitProvider'
-export type { OpenAILiveToolkitTool, OpenAILiveTransport } from './OpenAILiveToolkit'
+export type {
+  OpenAILiveStartOptions,
+  OpenAILiveToolkitTool,
+  OpenAILiveTransport,
+} from './OpenAILiveToolkit'
 export { OpenAILiveError } from './OpenAILiveToolkit'
 export type { OpenAILiveErrorCode } from './OpenAILiveToolkit'
 export type { TranscriptEntry, Speaker } from './transcript'

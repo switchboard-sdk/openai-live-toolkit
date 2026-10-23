@@ -24,6 +24,7 @@ jest.mock('./OpenAILiveToolkit', () => {
     start: jest.fn(() => Promise.resolve()),
     stop: jest.fn(),
     release: jest.fn(),
+    newConversation: jest.fn(),
     requestMicrophonePermission: jest.fn(() => Promise.resolve(true)),
     setInstructions: jest.fn(),
     appendInstructions: jest.fn(() => true),
@@ -295,6 +296,26 @@ describe('start / stop / release', () => {
     act(() => result.current.release())
     expect(toolkit.release).toHaveBeenCalled()
     expect(result.current.isRunning).toBe(false)
+  })
+
+  it('start passes a saved session through', async () => {
+    const { result } = renderProvider()
+    await act(() => result.current.start({ continueSessionId: 'saved' }))
+    expect(toolkit.start).toHaveBeenCalledWith({ continueSessionId: 'saved' })
+  })
+})
+
+describe('conversation', () => {
+  it('sessionId follows the latest session; newConversation clears it and the transcript', () => {
+    const { result } = renderProvider()
+    expect(result.current.sessionId).toBeNull()
+    emitLive('sessionStarted', { sessionId: 's1' })
+    emitLive('inputTranscriptDelta', { delta: ' Hello', startMs: 0, endMs: 200 })
+    expect(result.current.sessionId).toBe('s1')
+    act(() => result.current.newConversation())
+    expect(toolkit.newConversation).toHaveBeenCalled()
+    expect(result.current.sessionId).toBeNull()
+    expect(result.current.transcript).toEqual([])
   })
 })
 
