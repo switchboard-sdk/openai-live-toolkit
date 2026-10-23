@@ -135,7 +135,7 @@ mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → speak
 
 Without speaker isolation the resamplers and Quail are left out: `mic → mono → OpenAI.Live → speaker`.
 
-The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session.
+The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session. Starting again begins a new conversation, unless `continueConversation` is set (see [Continuing a conversation](#continuing-a-conversation)).
 
 ## Idle mode
 
@@ -151,3 +151,13 @@ mic → mono → [Quail] → splitter → OpenAI.Live → speaker
 - **Any voice wakes it**, and some noises: the VAD can't tell the user from a TV or someone nearby, and takes a phone vibrating on a table for speech. Quail doesn't help while the user is silent: it keeps a lone voice, and lets the vibration through. A wake the model doesn't answer closes again after `wakeGraceMs` (5 s by default) instead of a full idle timeout.
 - **Instructions and voice.** A fork keeps the closed session's instructions and voice, so changing either while idle makes the next session start fresh.
 - **Muted.** Speech doesn't reopen the session while the model is muted.
+
+## Continuing a conversation
+
+Set `continueConversation` on the provider to keep the conversation when a session reopens. OpenAI stores each session while it's on, which forking needs.
+
+- **Stop and start.** `start()` after `stop()` forks the session the stop closed, so the model remembers what was said.
+- **After the app was killed.** The toolkit keeps nothing across launches. Save `sessionId` from `useOpenAILiveToolkit()` and pass it to the first start: `start({ continueSessionId })`. When to resume is up to the app: clear the saved id when the user logs out, so the next user doesn't pick up their conversation, and drop it once it's old. The model remembers, but `transcript` starts empty. A session that was up when the app was killed can only be continued once OpenAI has closed it on its side, which can take up to a couple of minutes; a start before that begins a new conversation.
+- **Instructions and voice.** A fork keeps those of the session it continues, so after `setInstructions` or `setVoice` the next session starts fresh. Save them with a session id, and skip the resume when they've changed.
+- **Starting over.** `newConversation()` forgets the conversation and clears the transcript; a session that's up is replaced right away. After `release()` the next session starts fresh too.
+- **If it can't be continued**, for example OpenAI no longer has the stored session, a new session starts instead.

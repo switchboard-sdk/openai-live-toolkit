@@ -21,6 +21,7 @@ export type {
   SpeakerIsolation,
 } from './OpenAILiveToolkitProvider'
 export type {
+  OpenAILiveStartOptions,
   OpenAILiveToolkitTool,
   OpenAILiveTransport,
   OtherAudioDucking,

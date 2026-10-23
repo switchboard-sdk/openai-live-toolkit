@@ -76,6 +76,16 @@ export type OpenAILiveErrorListener = (error: OpenAILiveError) => void
  */
 export type OpenAILiveTransport = 'webrtc' | 'websocket'
 
+/** Options for `start()`. */
+export interface OpenAILiveStartOptions {
+  /**
+   * A session to continue, by the id from its `sessionStarted` event, e.g. one the app saved before
+   * it was killed. Needs `continueConversation`. A fork keeps the instructions and voice that
+   * session had.
+   */
+  continueSessionId?: string
+}
+
 /** Credentials and session seeds for {@link OpenAILiveToolkit.initialize}. */
 export interface OpenAILiveToolkitInitializeOptions {
   /** Switchboard app ID. Optional: falls back to the shared default credentials. */
@@ -118,6 +128,12 @@ export interface OpenAILiveToolkitInitializeOptions {
    * Defaults to 5000, capped at {@link idleTimeoutMs}; 0 turns it off.
    */
   wakeGraceMs?: number
+  /**
+   * Continue the conversation when a session reopens: `start()` after `stop()` forks the session
+   * the stop closed, and `start({ continueSessionId })` forks one the app saved, e.g. before it
+   * was killed. While on, OpenAI stores each session. Off by default.
+   */
+  continueConversation?: boolean
   /**
    * Let the delegate search the web (OpenAI's hosted web search), so the model can answer about
    * weather, news and other current information. Off by default; each search is billed.
@@ -276,6 +292,7 @@ function buildLiveEngine(
   },
   isolation: { available: boolean; enabled: boolean },
   idleMode: boolean,
+  store: boolean,
   otherAudio: { mix: boolean; ducking: OtherAudioDucking }
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
@@ -346,7 +363,7 @@ function buildLiveEngine(
         ),
         tools,
         // A closed session can only be continued if OpenAI stored it.
-        store: idleMode,
+        store,
       },
     },
     { id: 'monoToMultiChannelNode', type: 'Switchboard.MonoToMultiChannel' }
@@ -419,7 +436,7 @@ export function createOpenAILiveToolkit() {
     delegateInstructions: '',
   }
   const tools = new Map<string, OpenAILiveToolkitTool>()
-  // The tools note the current session's instructions carry, to tell when a live update is needed.
+  // The tools note the current session was given, to tell when a live update is needed.
   let sessionToolsNote = ''
   // The tools note in the instructions last written to the node, which the next session starts with.
   let lastWrittenToolsNote = ''
@@ -437,6 +454,7 @@ export function createOpenAILiveToolkit() {
   // Idle mode. 0 is off.
   let idleTimeoutMs = 0
   let wakeGraceMs = DEFAULT_WAKE_GRACE_MS
+  let continueConversation = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   // The session was closed for idling and reopens when the user speaks.
   let idle = false
@@ -539,6 +557,7 @@ export function createOpenAILiveToolkit() {
     speakerIsolation = options.speakerIsolation ?? true
     idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
     wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
+    continueConversation = options.continueConversation ?? false
     webSearch = options.webSearch ?? false
     otherAudio = {
       mix: options.mixWithOthers ?? false,
@@ -657,7 +676,7 @@ export function createOpenAILiveToolkit() {
    * @throws {OpenAILiveError} if not initialized, the `websocket` transport has no API key,
    * the mic is denied, or the engine fails to start.
    */
-  async function start(): Promise<void> {
+  async function start(options: OpenAILiveStartOptions = {}): Promise<void> {
     if (!initialized || !client) {
       throw initError
         ? new OpenAILiveError('INIT_FAILED', initError, true)
@@ -697,6 +716,7 @@ export function createOpenAILiveToolkit() {
           session,
           { available: isolationAvailable, enabled: speakerIsolation },
           idleTimeoutMs > 0,
+          idleTimeoutMs > 0 || continueConversation,
           otherAudio
         )
       )
@@ -714,6 +734,20 @@ export function createOpenAILiveToolkit() {
     // Before the streams open, so AEC engages on the loudspeaker.
     if (Platform.OS === 'android') {
       await startAndroidAudioSession()
+    }
+    if (options.continueSessionId && !continueConversation) {
+      console.warn('[OpenAILiveToolkit] continueSessionId ignored: it needs continueConversation.')
+    } else if (options.continueSessionId) {
+      lastSessionId = options.continueSessionId
+    }
+    // With continueConversation the graph start forks the last session. Set even with nothing to
+    // fork, so a fork left over from a failed start doesn't apply.
+    forking =
+      continueConversation &&
+      !c.setValue(LIVE_NODE, 'forkSessionId', lastSessionId ?? '').error &&
+      lastSessionId !== null
+    if (forking) {
+      log(`start: forking ${lastSessionId}`)
     }
     const startRes = c.callAction(id, 'start')
     if (startRes.error) {
@@ -752,7 +786,8 @@ export function createOpenAILiveToolkit() {
 
   /**
    * Tell the running session about the current tools. The node's instructions are only read
-   * when a session starts, so a change is sent as appended instructions instead.
+   * when a session starts, so a change is sent as context instead: GPT-Live drops the
+   * conversation so far when instructions are appended.
    */
   function syncToolsNote(): void {
     const note = toolsNote(toolDefs(), webSearch)
@@ -760,7 +795,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     const text = note === '' ? 'You no longer have any tools.' : `Your tools changed. ${note}`
-    if (!client?.callAction(LIVE_NODE, 'appendInstructions', { text }).error) {
+    if (!client?.callAction(LIVE_NODE, 'appendThinking', { text }).error) {
       sessionToolsNote = note
     }
   }
@@ -917,6 +952,10 @@ export function createOpenAILiveToolkit() {
     running = false
     sessionLive = false
     resetIdle()
+    // Otherwise kept for the next start to fork.
+    if (!continueConversation) {
+      lastSessionId = null
+    }
     return null
   }
 
@@ -1004,13 +1043,26 @@ export function createOpenAILiveToolkit() {
     idle = false
     woken = false
     forking = false
-    lastSessionId = null
     userSpeaking = false
   }
 
   /**
+   * Forget the conversation, so the next session starts fresh. A session that's up is replaced
+   * by a new one now; one closed by idle mode reopens fresh on the next wake.
+   */
+  function newConversation(): void {
+    lastSessionId = null
+    forking = false
+    if (!client || !running || idle) {
+      return
+    }
+    log('new conversation')
+    client.callAction(LIVE_NODE, 'resetSession')
+  }
+
+  /**
    * Stop the engine (closing the session), keeping it for a fast restart via
-   * {@link start}. {@link release} frees it.
+   * {@link start}, which continues the conversation with `continueConversation`. {@link release} frees it.
    * @throws {OpenAILiveError} if the engine refuses to stop.
    */
   function stop(): void {
@@ -1020,9 +1072,10 @@ export function createOpenAILiveToolkit() {
     }
   }
 
-  /** Stop and free the engine. The next {@link start} rebuilds it. */
+  /** Stop and free the engine. The next {@link start} rebuilds it, with a new conversation. */
   function release(): void {
     haltGraph()
+    lastSessionId = null
     if (client && engineId) {
       client.callAction('switchboard', 'destroyEngine', { engineID: engineId })
       engineId = null
@@ -1168,6 +1221,7 @@ export function createOpenAILiveToolkit() {
     unregisterTool,
     stop,
     release,
+    newConversation,
     shareLogs,
     /** Whether the engine is started (between {@link start} and {@link stop}). */
     get isRunning(): boolean {

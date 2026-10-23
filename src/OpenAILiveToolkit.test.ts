@@ -501,7 +501,7 @@ describe('tools note', () => {
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 2 })
     toolkit.unregisterTool('a')
-    expect(commandsFor('appendInstructions').map((c) => c.params.params.text)).toEqual([
+    expect(commandsFor('appendThinking').map((c) => c.params.params.text)).toEqual([
       'Your tools changed. ' + toolsNote([{ name: 'a', description: 'A' }]),
       'You no longer have any tools.',
     ])
@@ -510,19 +510,19 @@ describe('tools note', () => {
   it('does not append before a session is up', async () => {
     const toolkit = await running()
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
-    expect(commandsFor('appendInstructions')).toHaveLength(0)
+    expect(commandsFor('appendThinking')).toHaveLength(0)
   })
 
   it('brings a new session up to date when tools changed since the instructions were written', async () => {
     const toolkit = await running()
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-    expect(commandsFor('appendInstructions')).toHaveLength(1)
+    expect(commandsFor('appendThinking')).toHaveLength(1)
 
     // A reconnect starts from the node's instructions again, which still lack the tool.
     emitEvent('engine-1.liveNode', 'sessionDisconnected')
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
-    expect(commandsFor('appendInstructions')).toHaveLength(2)
+    expect(commandsFor('appendThinking')).toHaveLength(2)
   })
 
   it('leaves a new session alone when its instructions already carry the tools', async () => {
@@ -530,7 +530,7 @@ describe('tools note', () => {
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
     await toolkit.start()
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-    expect(commandsFor('appendInstructions')).toHaveLength(0)
+    expect(commandsFor('appendThinking')).toHaveLength(0)
   })
 })
 
@@ -740,6 +740,15 @@ describe('idle mode', () => {
     expect(toolkit.isIdle).toBe(false)
   })
 
+  it('newConversation while idle makes the next wake start fresh', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    toolkit.newConversation()
+    expect(commandsFor('resetSession')).toHaveLength(0)
+    vad('speechStarted')
+    expect(commandFor('startSession').params.params).toEqual({})
+  })
+
   describe('after a wake', () => {
     async function woken(options: Parameters<OpenAILiveToolkit['initialize']>[0] = IDLE) {
       const toolkit = await live(options)
@@ -804,10 +813,10 @@ describe('idle mode', () => {
     const toolkit = await live()
     jest.advanceTimersByTime(10_000)
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
-    expect(commandsFor('appendInstructions')).toHaveLength(0)
+    expect(commandsFor('appendThinking')).toHaveLength(0)
     vad('speechStarted')
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
-    expect(commandsFor('appendInstructions').map((c) => c.params.params.text)).toEqual([
+    expect(commandsFor('appendThinking').map((c) => c.params.params.text)).toEqual([
       'Your tools changed. ' + toolsNote([{ name: 'a', description: 'A' }]),
     ])
   })
@@ -1005,6 +1014,90 @@ describe('stop / release', () => {
     expect(toolkit.isRunning).toBe(false)
     await toolkit.start()
     expect(commandsFor('createEngine')).toHaveLength(1)
+  })
+
+  function forkSessionIds(): string[] {
+    return setValuesFor('liveNode', 'forkSessionId').map((c) => c.params.value)
+  }
+
+  const CONTINUE = { ...CREDS, continueConversation: true }
+
+  it('start begins a new conversation, without storing sessions, by default', async () => {
+    const toolkit = await running()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual([])
+    expect(liveNodeConfig().store).toBe(false)
+  })
+
+  it('with continueConversation, start continues the conversation a stop closed', async () => {
+    const toolkit = await running(CONTINUE)
+    expect(liveNodeConfig().store).toBe(true)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual(['', 's1'])
+    expect(native.log).toHaveBeenCalledWith('start: forking s1')
+  })
+
+  it('treats a fork on start that fails as non-fatal', async () => {
+    const toolkit = await running(CONTINUE)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    await toolkit.start()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'invalid_request_error',
+      message: 'The stored session was not found.',
+    })
+    expect(errors.map((e) => e.fatal)).toEqual([false])
+  })
+
+  it('start after setInstructions or release begins a new conversation', async () => {
+    const toolkit = await running(CONTINUE)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    toolkit.setInstructions('Be brief.')
+    await toolkit.start()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    toolkit.release()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual(['', '', ''])
+  })
+
+  it('start continues a saved session', async () => {
+    const toolkit = initialized(CONTINUE)
+    await toolkit.start({ continueSessionId: 'saved' })
+    expect(forkSessionIds()).toEqual(['saved'])
+  })
+
+  it('ignores a saved session without continueConversation', async () => {
+    const toolkit = initialized()
+    await toolkit.start({ continueSessionId: 'saved' })
+    expect(forkSessionIds()).toEqual([])
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('continueSessionId ignored'))
+  })
+
+  it('newConversation replaces a live session and makes the next start fresh', async () => {
+    const toolkit = await running(CONTINUE)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.newConversation()
+    expect(commandsFor('resetSession')).toHaveLength(1)
+    toolkit.stop()
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual(['', ''])
+  })
+
+  it('newConversation on a stopped engine only forgets the session', async () => {
+    const toolkit = await running(CONTINUE)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    toolkit.stop()
+    toolkit.newConversation()
+    expect(commandsFor('resetSession')).toHaveLength(0)
+    await toolkit.start()
+    expect(forkSessionIds()).toEqual(['', ''])
   })
 
   it('throws and stays running when the engine refuses to stop', async () => {
