@@ -259,7 +259,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = NQ2VLM7NM7;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = OpenAILiveToolkitExample/Info.plist;
@@ -274,7 +274,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.synervoz.openailive.example;
+				PRODUCT_BUNDLE_IDENTIFIER = com.synervoz.duplexvoice;
 				PRODUCT_NAME = SwitchboardDuplexVoice;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -290,7 +290,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = NQ2VLM7NM7;
 				INFOPLIST_FILE = OpenAILiveToolkitExample/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -304,7 +304,7 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.synervoz.openailive.example;
+				PRODUCT_BUNDLE_IDENTIFIER = com.synervoz.duplexvoice;
 				PRODUCT_NAME = SwitchboardDuplexVoice;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;

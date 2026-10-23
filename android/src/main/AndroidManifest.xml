@@ -17,5 +17,15 @@
             android:exported="false"
             android:foregroundServiceType="microphone"
             android:stopWithTask="true" />
+        <!-- Lets the share sheet read the log file. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.openailivetoolkit.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/openailivetoolkit_files" />
+        </provider>
     </application>
 </manifest>

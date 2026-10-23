@@ -36,6 +36,8 @@ import { colors } from './colors';
 
 const INSTRUCTIONS =
   'You are a terse, friendly voice assistant. Keep answers to one sentence.';
+// Close the session after this much silence; speaking reopens it.
+const IDLE_TIMEOUT_MS = 15_000;
 
 export default function App(): React.JSX.Element {
   return (
@@ -46,7 +48,12 @@ export default function App(): React.JSX.Element {
         appSecret={SWITCHBOARD_APP_SECRET || undefined}
         apiUrl={SWITCHBOARD_API_URL}
         aiCousticsLicenseKey={AIC_LICENSE_KEY}
-        instructions={INSTRUCTIONS}>
+        instructions={INSTRUCTIONS}
+        idleTimeoutMs={IDLE_TIMEOUT_MS}
+        webSearch
+        // A testing app: keep the conversation in the log, for Share logs.
+        logFile
+        logConversation>
         <Screen />
       </OpenAILiveToolkitProvider>
     </SafeAreaProvider>
@@ -65,6 +72,7 @@ function Screen(): React.JSX.Element {
     speakerIsolation,
     muted,
     setMuted,
+    shareLogs,
   } = useOpenAILiveToolkit();
 
   const [backgroundColor, setBackgroundColor] = useState(colors.bg);
@@ -134,14 +142,22 @@ function Screen(): React.JSX.Element {
       <View style={[styles.section, styles.transcriptSection]}>
         <View style={styles.toggleRow}>
           <Text style={styles.sectionHeader}>Connection: {connectionStatus}</Text>
-          <TouchableOpacity onPress={clearTranscript}>
-            <Text style={styles.link}>Clear</Text>
-          </TouchableOpacity>
+          <View style={styles.links}>
+            <TouchableOpacity
+              onPress={() =>
+                shareLogs().catch((e) => console.warn(`Couldn't share the logs: ${e}`))
+              }>
+              <Text style={styles.link}>Share logs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={clearTranscript}>
+              <Text style={styles.link}>Clear</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <ScrollView ref={scrollRef}>
           {transcript.length === 0 ? (
             <Text style={styles.hint}>
-              Talk over it, ask it to change the background color, or ask the time.
+              Talk over it, ask it to change the background color, ask the time, or ask about the weather.
             </Text>
           ) : (
             transcript.map((entry) => (
@@ -193,6 +209,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  links: { flexDirection: 'row', gap: 16 },
   link: { fontSize: 13, color: colors.muted },
   hint: { fontSize: 13, color: colors.dim },
   transcript: { fontSize: 14, color: colors.body, marginBottom: 8 },

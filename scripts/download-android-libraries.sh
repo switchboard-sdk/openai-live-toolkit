@@ -11,7 +11,8 @@
 # build path.
 #
 # SWITCHBOARD_LOCAL_BUILD=<switchboard-sdk checkout>/out copies the AARs built
-# there (inv sdk.build-android, inv openai.build-android) instead, for SDK
+# there (inv sdk.build-android, inv openai.build-android, inv onnx.build-android,
+# inv silerovad.build-android) instead, for SDK
 # branches that aren't in S3. Packages it doesn't have still come from S3.
 #
 # Layout produced (matches android/build.gradle):
@@ -21,7 +22,7 @@ set -euo pipefail
 SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-release/3.2.8}"
 BASE_URL="s3://switchboard-sdk/builds/${SWITCHBOARD_BUILD}/android"
 
-PACKAGES=(SwitchboardSDK SwitchboardOpenAI)
+PACKAGES=(SwitchboardSDK SwitchboardOnnx SwitchboardSileroVAD SwitchboardOpenAI)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIBS_DIR="${SCRIPT_DIR}/../android/libs"

@@ -1,6 +1,7 @@
 import { PermissionsAndroid, Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
 import { androidModule } from './androidModule'
+import { log, shareLogs, startLogFile } from './logs'
 import { NativeModuleRPCClient } from './NativeModuleRPCClient'
 import { SwitchboardClient } from './SwitchboardClient'
 import { DEFAULT_DELEGATE_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
@@ -105,10 +106,34 @@ export interface OpenAILiveToolkitInitializeOptions {
   delegateInstructions?: string
   /** Start with speaker isolation on. Defaults to true. Needs {@link aiCousticsLicenseKey}. */
   speakerIsolation?: boolean
+  /**
+   * Close the session after this many ms with nobody talking, and reopen it when the user
+   * speaks, continuing the conversation. Nothing is billed while it's closed. Off by default.
+   * While on, OpenAI stores each session so the next one can continue it.
+   */
+  idleTimeoutMs?: number
+  /**
+   * After a wake, close again after this many ms unless the model replies or delegates. Keeps a
+   * wake on a noise (a TV, the phone vibrating) from costing a full {@link idleTimeoutMs}.
+   * Defaults to 5000, capped at {@link idleTimeoutMs}; 0 turns it off.
+   */
+  wakeGraceMs?: number
+  /**
+   * Let the delegate search the web (OpenAI's hosted web search), so the model can answer about
+   * weather, news and other current information. Off by default; each search is billed.
+   */
+  webSearch?: boolean
+  /** Also write the SDK's log and the toolkit's events to a file, for {@link shareLogs}. Off by default. */
+  logFile?: boolean
+  /** Include the transcript and tool arguments and results in the log. Off by default. */
+  logConversation?: boolean
 }
 
-/** The categories of event the toolkit surfaces, one per graph node it listens to. */
-export type OpenAILiveToolkitEventType = 'live'
+/**
+ * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
+ * (speechStarted / speechEnded) is only there in idle mode.
+ */
+export type OpenAILiveToolkitEventType = 'live' | 'vad'
 
 /** A classified Switchboard event. */
 export interface OpenAILiveToolkitEvent {
@@ -161,6 +186,12 @@ interface ToolDef {
   parameters: object
 }
 
+/** OpenAI's hosted web search, which the delegate runs itself. */
+const WEB_SEARCH_TOOL = { type: 'web_search' } as const
+
+/** What the Live node gets as the delegate's tools. */
+type DelegateTool = ToolDef | typeof WEB_SEARCH_TOOL
+
 /** Payload of a `toolCall` event from the Live node. */
 interface ToolCall {
   callId: string
@@ -170,16 +201,19 @@ interface ToolCall {
 
 const LIVE_NODE = 'liveNode'
 const ISOLATION_NODE = 'speakerIsolationNode'
+const VAD_NODE = 'vadNode'
 
 // The graph's node IDs → event category, used to split the single native event stream.
 const NODE_EVENT_TYPE: Record<string, OpenAILiveToolkitEventType> = {
   [LIVE_NODE]: 'live',
+  [VAD_NODE]: 'vad',
 }
 
 // The graph runs at 48 kHz; Quail wants 16 kHz, so it sits between two resamplers.
 const GRAPH_SAMPLE_RATE = 48000
 const QUAIL_SAMPLE_RATE = 16000
 const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
+const DEFAULT_WAKE_GRACE_MS = 5_000
 
 // GPT-Live only delegates work it knows can be done, and the tools live in the delegate's config,
 // so the live model is told about them; the delegate is told to call them rather than say it did.
@@ -188,12 +222,23 @@ const DELEGATE_INSTRUCTIONS =
   'tool; never claim an action is done without calling it.'
 
 /** What the live model is told about the registered tools. Empty with no tools. */
-export function toolsNote(tools: readonly { name: string; description: string }[]): string {
-  if (tools.length === 0) {
-    return ''
+export function toolsNote(
+  tools: readonly { name: string; description: string }[],
+  webSearch = false
+): string {
+  const parts: string[] = []
+  if (tools.length > 0) {
+    const list = tools.map((t) => `${t.name} (${t.description})`).join('; ')
+    parts.push(
+      `You can act in the app through tools: ${list}. Use them whenever the user asks for one of these.`
+    )
   }
-  const list = tools.map((t) => `${t.name} (${t.description})`).join('; ')
-  return `You can act in the app through tools: ${list}. Use them whenever the user asks for one of these.`
+  if (webSearch) {
+    parts.push(
+      'For current information like weather or news, delegate: the delegate can search the web.'
+    )
+  }
+  return parts.join(' ')
 }
 
 function joinInstructions(...parts: string[]): string {
@@ -203,12 +248,13 @@ function joinInstructions(...parts: string[]): string {
 /**
  * The Switchboard graph the toolkit runs:
  * microphone → mono → [Quail speaker isolation] → OpenAI.Live → speaker.
- * The model owns turn-taking, so there are no local VAD / turn taps.
+ * The model owns turn-taking. In idle mode a VAD taps the input the model hears, only to
+ * tell when the user starts talking again.
  */
 function buildLiveEngine(
   transport: OpenAILiveTransport,
   apiKey: string,
-  tools: ToolDef[],
+  tools: DelegateTool[],
   session: {
     model: string
     voice: OpenAIVoice
@@ -216,7 +262,8 @@ function buildLiveEngine(
     delegateModel: string
     delegateInstructions: string
   },
-  isolation: { available: boolean; enabled: boolean }
+  isolation: { available: boolean; enabled: boolean },
+  idleMode: boolean
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -248,6 +295,17 @@ function buildLiveEngine(
     )
     chain.push('downResamplerNode', ISOLATION_NODE, 'upResamplerNode')
   }
+  if (idleMode) {
+    nodes.push(
+      { id: 'vadSplitterNode', type: 'Switchboard.BusSplitter' },
+      {
+        id: VAD_NODE,
+        type: 'Silero.VAD',
+        configuration: { threshold: 0.5, minSilenceDurationMs: 500 },
+      }
+    )
+    chain.push('vadSplitterNode')
+  }
   nodes.push(
     {
       id: LIVE_NODE,
@@ -258,7 +316,13 @@ function buildLiveEngine(
         ...(transport === 'websocket' ? { apiKey } : {}),
         model: session.model,
         voice: session.voice,
-        instructions: joinInstructions(session.instructions, toolsNote(tools)),
+        instructions: joinInstructions(
+          session.instructions,
+          toolsNote(
+            tools.filter((t): t is ToolDef => t.type === 'function'),
+            tools.includes(WEB_SEARCH_TOOL)
+          )
+        ),
         // Always Responses delegation, so tools can be added or removed on a live
         // session. The delegate only runs (and bills) when the model hands it work.
         delegation: 'responses',
@@ -268,11 +332,20 @@ function buildLiveEngine(
           session.delegateInstructions
         ),
         tools,
+        // A closed session can only be continued if OpenAI stored it.
+        store: idleMode,
       },
     },
     { id: 'monoToMultiChannelNode', type: 'Switchboard.MonoToMultiChannel' }
   )
   chain.push(LIVE_NODE, 'monoToMultiChannelNode', 'outputNode')
+  const connections = chain.slice(1).map((destinationNode, i) => ({
+    sourceNode: chain[i],
+    destinationNode,
+  }))
+  if (idleMode) {
+    connections.push({ sourceNode: 'vadSplitterNode', destinationNode: VAD_NODE })
+  }
 
   return {
     type: 'Switchboard.Realtime',
@@ -287,10 +360,7 @@ function buildLiveEngine(
       graph: {
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
         nodes,
-        connections: chain.slice(1).map((destinationNode, i) => ({
-          sourceNode: chain[i],
-          destinationNode,
-        })),
+        connections,
       },
     },
   }
@@ -338,6 +408,7 @@ export function createOpenAILiveToolkit() {
 
   const listeners: Record<OpenAILiveToolkitEventType, Set<OpenAILiveToolkitEventListener>> = {
     live: new Set(),
+    vad: new Set(),
   }
   const errorListeners = new Set<OpenAILiveErrorListener>()
   // Whether a session is currently up. Decides whether a session failure is fatal:
@@ -345,14 +416,56 @@ export function createOpenAILiveToolkit() {
   // session was survivable.
   let sessionLive = false
 
+  // Idle mode. 0 is off.
+  let idleTimeoutMs = 0
+  let wakeGraceMs = DEFAULT_WAKE_GRACE_MS
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  // The session was closed for idling and reopens when the user speaks.
+  let idle = false
+  // The latest session, which a wake continues. Null makes the next wake start fresh.
+  let lastSessionId: string | null = null
+  // The session coming up is a fork of lastSessionId.
+  let forking = false
+  // Woken by speech the model hasn't answered yet, so the countdown is wakeGraceMs.
+  let woken = false
+  let userSpeaking = false
+  let toolCallsInFlight = 0
+
+  let webSearch = false
+  let logConversation = false
+  // The transcript turn being collected for the log.
+  let turnSpeaker: 'user' | 'assistant' | null = null
+  let turnText = ''
+
   function emitError(
     code: OpenAILiveErrorCode,
     message: string,
     fatal: boolean,
     details?: Record<string, unknown>
   ): void {
+    log(`error ${code}${fatal ? ' (fatal)' : ''}: ${message}`)
     const error = new OpenAILiveError(code, message, fatal, details)
     errorListeners.forEach((l) => l(error))
+  }
+
+  /** Log the transcript a turn at a time: one line per change of speaker. */
+  function logTranscript(speaker: 'user' | 'assistant', delta: string): void {
+    if (!logConversation) {
+      return
+    }
+    if (speaker !== turnSpeaker) {
+      flushTranscript()
+      turnSpeaker = speaker
+    }
+    turnText += delta
+  }
+
+  function flushTranscript(): void {
+    if (turnSpeaker && turnText.trim() !== '') {
+      log(`${turnSpeaker}: ${turnText.trim()}`)
+    }
+    turnSpeaker = null
+    turnText = ''
   }
 
   /**
@@ -405,6 +518,10 @@ export function createOpenAILiveToolkit() {
     session.delegateModel = options.delegateModel ?? DEFAULT_DELEGATE_MODEL
     session.delegateInstructions = options.delegateInstructions ?? ''
     speakerIsolation = options.speakerIsolation ?? true
+    idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
+    wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
+    webSearch = options.webSearch ?? false
+    logConversation = options.logConversation ?? false
 
     const apiUrl = options.apiUrl?.trim() ?? ''
     const c = ensureClient()
@@ -415,6 +532,10 @@ export function createOpenAILiveToolkit() {
       }
       if (isolationAvailable) {
         extensions.AICoustics = { licenseKey }
+      }
+      if (idleTimeoutMs > 0) {
+        extensions.Silero = {}
+        extensions.Onnx = {}
       }
       const res = c.callAction('switchboard', 'initialize', {
         appID: appId,
@@ -428,6 +549,14 @@ export function createOpenAILiveToolkit() {
         return
       }
     }
+    // After the SDK's initialize, which installs the console log destination the file passes lines on to.
+    if (options.logFile) {
+      startLogFile()
+    }
+    log(
+      `initialize: ${transport}, speaker isolation ${isolationAvailable ? 'available' : 'unavailable'}, ` +
+        `idle timeout ${idleTimeoutMs} ms`
+    )
     // Re-adopt an engine that survived the reload so start() reuses it.
     const engines = c.getValue('switchboard', 'engines').result
     engineId = Array.isArray(engines) && engines.length > 0 ? String(engines[0]) : null
@@ -534,14 +663,18 @@ export function createOpenAILiveToolkit() {
     // Create the engine once; start/stop reuse it, release() frees it.
     let id = engineId
     if (!id) {
-      lastWrittenToolsNote = toolsNote(toolDefs())
+      lastWrittenToolsNote = toolsNote(toolDefs(), webSearch)
       const res = c.callAction(
         'switchboard',
         'createEngine',
-        buildLiveEngine(transport, openAIApiKey, toolDefs(), session, {
-          available: isolationAvailable,
-          enabled: speakerIsolation,
-        })
+        buildLiveEngine(
+          transport,
+          openAIApiKey,
+          delegateTools(),
+          session,
+          { available: isolationAvailable, enabled: speakerIsolation },
+          idleTimeoutMs > 0
+        )
       )
       id = res.result as string
       if (!id) {
@@ -570,6 +703,7 @@ export function createOpenAILiveToolkit() {
       )
     }
     running = true
+    log('engine started')
   }
 
   /**
@@ -579,15 +713,17 @@ export function createOpenAILiveToolkit() {
    */
   function setInstructions(next: string): void {
     session.instructions = next
+    // A fork keeps the stored session's instructions, so the next wake starts fresh.
+    lastSessionId = null
     if (engineId) {
-      lastWrittenToolsNote = toolsNote(toolDefs())
+      lastWrittenToolsNote = toolsNote(toolDefs(), webSearch)
       client?.setValue(LIVE_NODE, 'instructions', liveInstructions())
     }
   }
 
   /** The live model's instructions: the app's prompt plus the note about the current tools. */
   function liveInstructions(): string {
-    return joinInstructions(session.instructions, toolsNote(toolDefs()))
+    return joinInstructions(session.instructions, toolsNote(toolDefs(), webSearch))
   }
 
   /**
@@ -595,7 +731,7 @@ export function createOpenAILiveToolkit() {
    * when a session starts, so a change is sent as appended instructions instead.
    */
   function syncToolsNote(): void {
-    const note = toolsNote(toolDefs())
+    const note = toolsNote(toolDefs(), webSearch)
     if (!sessionLive || note === sessionToolsNote) {
       return
     }
@@ -629,6 +765,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     session.voice = next
+    lastSessionId = null
     if (engineId) {
       client?.setValue(LIVE_NODE, 'voice', next)
     }
@@ -636,6 +773,7 @@ export function createOpenAILiveToolkit() {
 
   /** Turn Quail speaker isolation on or off. Applied live. No-op unless it's available. */
   function setSpeakerIsolation(enabled: boolean): void {
+    log(`speaker isolation ${enabled ? 'on' : 'off'}`)
     speakerIsolation = enabled
     if (engineId && isolationAvailable) {
       client?.setValue(ISOLATION_NODE, 'enabled', enabled)
@@ -644,6 +782,7 @@ export function createOpenAILiveToolkit() {
 
   /** Stop the model hearing the microphone, or let it hear again. Kept across sessions. */
   function setMuted(next: boolean): void {
+    log(next ? 'muted' : 'unmuted')
     muted = next
     if (sessionLive) {
       client?.callAction(LIVE_NODE, next ? 'muteInput' : 'unmuteInput')
@@ -658,7 +797,7 @@ export function createOpenAILiveToolkit() {
   function registerTool(tool: OpenAILiveToolkitTool): void {
     tools.set(tool.name, tool)
     if (engineId) {
-      client?.setValue(LIVE_NODE, 'tools', toolDefs())
+      client?.setValue(LIVE_NODE, 'tools', delegateTools())
       syncToolsNote()
     }
   }
@@ -666,12 +805,17 @@ export function createOpenAILiveToolkit() {
   /** Remove a registered tool by name; no-op if it isn't registered. */
   function unregisterTool(name: string): void {
     if (tools.delete(name) && engineId) {
-      client?.setValue(LIVE_NODE, 'tools', toolDefs())
+      client?.setValue(LIVE_NODE, 'tools', delegateTools())
       syncToolsNote()
     }
   }
 
   /** Function definitions for the registered tools (handlers stripped). */
+  /** The registered tools, plus web search when it's on. */
+  function delegateTools(): DelegateTool[] {
+    return webSearch ? [...toolDefs(), WEB_SEARCH_TOOL] : toolDefs()
+  }
+
   function toolDefs(): ToolDef[] {
     return Array.from(tools.values()).map((t) => ({
       type: 'function' as const,
@@ -687,6 +831,16 @@ export function createOpenAILiveToolkit() {
    * to {@link addErrorListener}.
    */
   async function handleToolCall(call: ToolCall): Promise<void> {
+    toolCallsInFlight++
+    try {
+      await runToolCall(call)
+    } finally {
+      toolCallsInFlight--
+      touch()
+    }
+  }
+
+  async function runToolCall(call: ToolCall): Promise<void> {
     const tool = tools.get(call.name)
     let action: 'submitToolResult' | 'submitToolError' = 'submitToolResult'
     let params: Record<string, string>
@@ -697,6 +851,9 @@ export function createOpenAILiveToolkit() {
       const args = call.argumentsJson ? JSON.parse(call.argumentsJson) : {}
       const result = await tool.handler(args)
       params = { callId: call.callId, outputJson: JSON.stringify(result ?? null) }
+      log(
+        `tool ${call.name} returned${logConversation ? ` ${params.outputJson.slice(0, 200)}` : ''}`
+      )
     } catch (err) {
       emitError('TOOL_HANDLER_FAILED', `Tool '${call.name}' failed: ${String(err)}`, false, {
         tool: call.name,
@@ -730,10 +887,101 @@ export function createOpenAILiveToolkit() {
       if (Platform.OS === 'android') {
         stopAndroidAudioSession()
       }
+      flushTranscript()
+      log('engine stopped')
     }
     running = false
     sessionLive = false
+    resetIdle()
     return null
+  }
+
+  /** (Re)start the idle countdown. Anything that shows the conversation is going calls this. */
+  function touch(): void {
+    if (idleTimeoutMs <= 0 || idle || !running) {
+      return
+    }
+    const timeoutMs =
+      woken && wakeGraceMs > 0 ? Math.min(wakeGraceMs, idleTimeoutMs) : idleTimeoutMs
+    // JS timers stop while an Android app is in the background, so the countdown runs natively there.
+    const android = Platform.OS === 'android' ? androidModule() : undefined
+    if (android) {
+      android.setIdleTimer(timeoutMs).then((fired) => {
+        if (fired) {
+          goIdle()
+        }
+      })
+      return
+    }
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+    }
+    idleTimer = setTimeout(goIdle, timeoutMs)
+  }
+
+  /** The model answered a wake, so it was the user: back to the full timeout. */
+  function engaged(): void {
+    woken = false
+    touch()
+  }
+
+  /** Close a session nobody has talked in for {@link idleTimeoutMs}. */
+  function goIdle(): void {
+    idleTimer = null
+    // A session that isn't up bills nothing; the next sessionStarted restarts the countdown.
+    if (!sessionLive) {
+      return
+    }
+    if (userSpeaking || toolCallsInFlight > 0) {
+      touch()
+      return
+    }
+    if (client?.callAction(LIVE_NODE, 'endSession').error) {
+      touch()
+      return
+    }
+    flushTranscript()
+    log('idle: session ended')
+    idle = true
+    woken = false
+    sessionLive = false
+    // The node reports no sessionClosed for a session it was told to end, so say it here.
+    const event: OpenAILiveToolkitEvent = {
+      type: 'live',
+      name: 'sessionEnded',
+      objectURI: `${engineId}.${LIVE_NODE}`,
+      data: undefined,
+      raw: '',
+    }
+    listeners.live.forEach((l) => l(event))
+  }
+
+  /** The user spoke into an idle session: reopen it, continuing the conversation if there is one. */
+  function wake(): void {
+    // A muted model wouldn't hear them anyway.
+    if (muted) {
+      return
+    }
+    idle = false
+    woken = true
+    forking = lastSessionId !== null
+    log(forking ? `wake: forking ${lastSessionId}` : 'wake: new session')
+    client?.callAction(LIVE_NODE, 'startSession', forking ? { forkSessionId: lastSessionId } : {})
+  }
+
+  function resetIdle(): void {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+    if (idleTimeoutMs > 0 && Platform.OS === 'android') {
+      androidModule()?.cancelIdleTimer()
+    }
+    idle = false
+    woken = false
+    forking = false
+    lastSessionId = null
+    userSpeaking = false
   }
 
   /**
@@ -794,37 +1042,89 @@ export function createOpenAILiveToolkit() {
       timestamp: e?.timestamp,
       raw,
     }
+    if (type === 'vad') {
+      handleVadEvent(event.name)
+      listeners.vad.forEach((l) => l(event))
+      return
+    }
     switch (event.name) {
-      case 'toolCall':
-        handleToolCall(event.data as ToolCall)
+      case 'toolCall': {
+        const call = event.data as ToolCall
+        flushTranscript()
+        log(`tool call ${call.name}${logConversation ? ` ${call.argumentsJson ?? ''}` : ''}`)
+        woken = false
+        handleToolCall(call)
         break
+      }
       case 'sessionStarted':
         sessionLive = true
+        lastSessionId = (event.data as { sessionId?: string } | undefined)?.sessionId || null
+        log(`session started ${lastSessionId}${forking ? ' (fork)' : ''}`)
         // Every session starts unmuted; carry the app's choice over.
         if (muted) {
           client?.callAction(LIVE_NODE, 'muteInput')
         }
-        // A new session reads the instructions last written to the node; bring its tools note up to date.
-        sessionToolsNote = lastWrittenToolsNote
+        // A new session reads the instructions last written to the node, while a fork knows what
+        // the session it continues was told. Either way, bring its tools note up to date.
+        if (!forking) {
+          sessionToolsNote = lastWrittenToolsNote
+        }
+        forking = false
         syncToolsNote()
+        touch()
+        break
+      // An "mm" from a noise restarts the countdown but doesn't show the model was talked to.
+      case 'inputTranscriptDelta':
+        logTranscript('user', (event.data as { delta?: string } | undefined)?.delta ?? '')
+        touch()
+        break
+      case 'outputTranscriptDelta':
+        logTranscript('assistant', (event.data as { delta?: string } | undefined)?.delta ?? '')
+        engaged()
+        break
+      case 'delegationCreated':
+        flushTranscript()
+        log(`delegation ${JSON.stringify(event.data ?? {})}`)
+        engaged()
         break
       case 'sessionStarting':
       case 'sessionDisconnected':
       case 'sessionClosed':
+        flushTranscript()
+        log(`${event.name}${event.data ? ` ${JSON.stringify(event.data)}` : ''}`)
         sessionLive = false
         break
       case 'error': {
-        const message = (event.data as { message?: string } | undefined)?.message
+        const data = event.data as { type?: string; message?: string } | undefined
+        const message = data?.message
+        // A fork that fails, refused or over WebRTC as a failed connection, isn't fatal: the node
+        // starts a new session instead.
+        const forkFailed = forking && !sessionLive
+        if (forkFailed) {
+          forking = false
+        }
         emitError(
           'SESSION_FAILED',
           message?.trim() ? message : `Session error: ${event.raw}`,
-          !sessionLive,
+          !sessionLive && !forkFailed,
           { raw }
         )
         break
       }
     }
     listeners[type].forEach((l) => l(event))
+  }
+
+  function handleVadEvent(name: string): void {
+    if (name === 'speechStarted') {
+      userSpeaking = true
+      if (idle) {
+        wake()
+      }
+    } else if (name === 'speechEnded') {
+      userSpeaking = false
+      touch()
+    }
   }
 
   return {
@@ -844,9 +1144,14 @@ export function createOpenAILiveToolkit() {
     unregisterTool,
     stop,
     release,
+    shareLogs,
     /** Whether the engine is started (between {@link start} and {@link stop}). */
     get isRunning(): boolean {
       return running
+    },
+    /** Whether idle mode closed the session; it reopens when the user speaks. */
+    get isIdle(): boolean {
+      return idle
     },
     /** Whether this build links the AICoustics extension. Known after {@link initialize}. */
     get isSpeakerIsolationSupported(): boolean {

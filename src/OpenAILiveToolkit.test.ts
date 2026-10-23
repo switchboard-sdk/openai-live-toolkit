@@ -1,6 +1,6 @@
 jest.mock('./NativeOpenAILiveToolkit')
 
-import { NativeModules, PermissionsAndroid, Platform } from 'react-native'
+import { NativeModules, PermissionsAndroid, Platform, Share } from 'react-native'
 import {
   createOpenAILiveToolkit,
   OpenAILiveError,
@@ -25,6 +25,13 @@ const native = NativeOpenAILiveToolkit as unknown as {
   processCommand: jest.Mock<string, [string]>
   requestMicrophonePermission: jest.Mock<Promise<boolean>, []>
   isSpeakerIsolationSupported: jest.Mock<boolean, []>
+  startLogFile: jest.Mock<void, [string]>
+  log: jest.Mock<void, [string]>
+  exportLogFile: jest.Mock<string, []>
+}
+
+function logged(): string[] {
+  return native.log.mock.calls.map(([line]) => line)
 }
 
 function sentCommands(): any[] {
@@ -336,6 +343,7 @@ describe('graph', () => {
       responsesModel: 'gpt-5.5',
       responsesInstructions: expect.stringContaining('never claim an action is done'),
       tools: [],
+      store: false,
     })
   })
 
@@ -629,6 +637,322 @@ describe('session failures are classified by whether a session is up', () => {
   })
 })
 
+describe('idle mode', () => {
+  const IDLE = { ...CREDS, idleTimeoutMs: 10_000 }
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
+  })
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  function vad(name: 'speechStarted' | 'speechEnded') {
+    emitEvent('engine-1.vadNode', name)
+  }
+
+  async function live(options: Parameters<OpenAILiveToolkit['initialize']>[0] = IDLE) {
+    const toolkit = await running(options)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    return toolkit
+  }
+
+  it('loads the VAD extensions only when on', () => {
+    initialized(IDLE)
+    expect(commandFor('initialize').params.params.extensions).toMatchObject({
+      Silero: {},
+      Onnx: {},
+    })
+    resetNativeMock()
+    happyPath()
+    initialized()
+    expect(commandFor('initialize').params.params.extensions.Silero).toBeUndefined()
+  })
+
+  it('taps a VAD off the input the model hears and stores sessions', async () => {
+    await running(IDLE)
+    const connections = engineConfig().configuration.graph.connections
+    expect(connections).toContainEqual({
+      sourceNode: 'multiChannelToMonoNode',
+      destinationNode: 'vadSplitterNode',
+    })
+    expect(connections).toContainEqual({
+      sourceNode: 'vadSplitterNode',
+      destinationNode: 'liveNode',
+    })
+    expect(connections).toContainEqual({
+      sourceNode: 'vadSplitterNode',
+      destinationNode: 'vadNode',
+    })
+    expect(graphNodes().find((n) => n.id === 'vadNode').type).toBe('Silero.VAD')
+    expect(liveNodeConfig().store).toBe(true)
+  })
+
+  it('ends the session once nobody has talked for the timeout', async () => {
+    const toolkit = await live()
+    const names: string[] = []
+    toolkit.addEventListener('live', (e) => names.push(e.name))
+    jest.advanceTimersByTime(9_999)
+    expect(commandFor('endSession')).toBeUndefined()
+    jest.advanceTimersByTime(1)
+    expect(commandFor('endSession')).toBeDefined()
+    expect(toolkit.isIdle).toBe(true)
+    expect(names).toEqual(['sessionEnded'])
+  })
+
+  it('counts from the last sign of conversation', async () => {
+    await live()
+    jest.advanceTimersByTime(9_000)
+    emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
+    jest.advanceTimersByTime(9_000)
+    expect(commandFor('endSession')).toBeUndefined()
+    jest.advanceTimersByTime(1_000)
+    expect(commandFor('endSession')).toBeDefined()
+  })
+
+  it('stays up while the user is speaking or a tool is running', async () => {
+    const toolkit = await live()
+    vad('speechStarted')
+    jest.advanceTimersByTime(30_000)
+    expect(commandFor('endSession')).toBeUndefined()
+    vad('speechEnded')
+
+    let finish: (value: unknown) => void = () => {}
+    toolkit.registerTool({
+      name: 't',
+      description: 'T',
+      handler: () => new Promise((r) => (finish = r)),
+    })
+    emitEvent('engine-1.liveNode', 'toolCall', { callId: 'c1', name: 't', argumentsJson: '{}' })
+    jest.advanceTimersByTime(30_000)
+    expect(commandFor('endSession')).toBeUndefined()
+    finish(1)
+    await flush()
+    jest.advanceTimersByTime(10_000)
+    expect(commandFor('endSession')).toBeDefined()
+  })
+
+  it('wakes on speech by forking the last session', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    expect(commandFor('startSession').params.params).toEqual({ forkSessionId: 's1' })
+    expect(toolkit.isIdle).toBe(false)
+  })
+
+  describe('after a wake', () => {
+    async function woken(options: Parameters<OpenAILiveToolkit['initialize']>[0] = IDLE) {
+      const toolkit = await live(options)
+      jest.advanceTimersByTime(10_000)
+      vad('speechStarted')
+      vad('speechEnded')
+      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+      return toolkit
+    }
+
+    it('closes again after the grace period when the model does not answer', async () => {
+      const toolkit = await woken()
+      jest.advanceTimersByTime(4_999)
+      expect(commandsFor('endSession')).toHaveLength(1)
+      jest.advanceTimersByTime(1)
+      expect(commandsFor('endSession')).toHaveLength(2)
+      expect(toolkit.isIdle).toBe(true)
+    })
+
+    it('keeps the grace period through an input transcript, like an "mm" from a noise', async () => {
+      await woken()
+      emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: ' Mm' })
+      jest.advanceTimersByTime(5_000)
+      expect(commandsFor('endSession')).toHaveLength(2)
+    })
+
+    it('goes back to the full timeout once the model answers', async () => {
+      await woken()
+      emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
+      jest.advanceTimersByTime(9_999)
+      expect(commandsFor('endSession')).toHaveLength(1)
+      jest.advanceTimersByTime(1)
+      expect(commandsFor('endSession')).toHaveLength(2)
+    })
+
+    it('waits the full timeout when the grace period is off', async () => {
+      await woken({ ...IDLE, wakeGraceMs: 0 })
+      jest.advanceTimersByTime(9_999)
+      expect(commandsFor('endSession')).toHaveLength(1)
+      jest.advanceTimersByTime(1)
+      expect(commandsFor('endSession')).toHaveLength(2)
+    })
+  })
+
+  it('starts fresh after the instructions or voice change, which a fork would keep', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    toolkit.setInstructions('Be kind.')
+    vad('speechStarted')
+    expect(commandFor('startSession').params.params).toEqual({})
+  })
+
+  it('does not wake while muted', async () => {
+    const toolkit = await live()
+    toolkit.setMuted(true)
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    expect(commandFor('startSession')).toBeUndefined()
+  })
+
+  it('tells a fork about tools that changed while idle', async () => {
+    const toolkit = await live()
+    jest.advanceTimersByTime(10_000)
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    expect(commandsFor('appendInstructions')).toHaveLength(0)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(commandsFor('appendInstructions').map((c) => c.params.params.text)).toEqual([
+      'Your tools changed. ' + toolsNote([{ name: 'a', description: 'A' }]),
+    ])
+  })
+
+  it('treats a refused fork as non-fatal', async () => {
+    const toolkit = await live()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'invalid_request_error',
+      message: 'The stored session was not found.',
+    })
+    expect(errors.map((e) => e.fatal)).toEqual([false])
+  })
+
+  it('treats a fork that fails to connect as non-fatal, and the next session as new', async () => {
+    const toolkit = await live()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'transport_error',
+      message: 'Failed to create the live session: HTTP 502, Failed to fork live session',
+    })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(errors.map((e) => e.fatal)).toEqual([false])
+    expect(native.log).toHaveBeenCalledWith('session started s2')
+  })
+
+  it('stops counting once the engine stops', async () => {
+    const toolkit = await live()
+    toolkit.stop()
+    jest.advanceTimersByTime(10_000)
+    expect(commandFor('endSession')).toBeUndefined()
+  })
+
+  it('never ends the session when off', async () => {
+    await live(CREDS)
+    jest.advanceTimersByTime(600_000)
+    expect(commandFor('endSession')).toBeUndefined()
+  })
+})
+
+describe('logs', () => {
+  const LOGGED = { ...CREDS, logFile: true }
+
+  it('writes no log file unless asked', () => {
+    initialized()
+    expect(native.startLogFile).not.toHaveBeenCalled()
+  })
+
+  it('starts the log file in the caches directory', () => {
+    initialized(LOGGED)
+    expect(native.startLogFile).toHaveBeenCalledWith('/mock/caches')
+  })
+
+  it('logs tool names but not the conversation by default', async () => {
+    await running(LOGGED)
+    emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'Make it crimson.' })
+    emitEvent('engine-1.liveNode', 'toolCall', {
+      callId: 'c1',
+      name: 'set_background_color',
+      argumentsJson: '{"color":"crimson"}',
+    })
+    expect(logged()).toContain('tool call set_background_color')
+    expect(logged().join('\n')).not.toContain('crimson')
+  })
+
+  it('logs the transcript a turn at a time, and tool arguments, with logConversation', async () => {
+    await running({ ...LOGGED, logConversation: true })
+    emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'Make it' })
+    emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: ' red.' })
+    emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
+    emitEvent('engine-1.liveNode', 'toolCall', {
+      callId: 'c1',
+      name: 'set_background_color',
+      argumentsJson: '{"color":"red"}',
+    })
+    expect(logged()).toEqual(
+      expect.arrayContaining([
+        'user: Make it red.',
+        'assistant: Sure.',
+        'tool call set_background_color {"color":"red"}',
+      ])
+    )
+  })
+
+  it('logs errors', () => {
+    const toolkit = initialized()
+    toolkit.addErrorListener(() => {})
+    emitEvent('engine-1.liveNode', 'error', { message: 'boom' })
+    expect(logged()).toContain('error SESSION_FAILED (fatal): boom')
+  })
+
+  it('shares the exported file through the share sheet', async () => {
+    const share = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' })
+    await createOpenAILiveToolkit().shareLogs()
+    expect(share).toHaveBeenCalledWith({ url: 'file:///mock/caches/openai-live-toolkit-log.txt' })
+    share.mockRestore()
+  })
+
+  it('shares through the JVM module on Android', async () => {
+    const originalOS = Platform.OS
+    Platform.OS = 'android'
+    const shareFile = jest.fn().mockResolvedValue(undefined)
+    NativeModules.OpenAILiveToolkitAndroid = { shareFile }
+    try {
+      await createOpenAILiveToolkit().shareLogs()
+      expect(shareFile).toHaveBeenCalledWith('/mock/caches/openai-live-toolkit-log.txt')
+    } finally {
+      Platform.OS = originalOS
+      delete NativeModules.OpenAILiveToolkitAndroid
+    }
+  })
+
+  it('rejects when there is no log file', async () => {
+    native.exportLogFile.mockReturnValue('')
+    await expect(createOpenAILiveToolkit().shareLogs()).rejects.toThrow('logFile on')
+  })
+})
+
+describe('web search', () => {
+  it('is off by default', async () => {
+    await running()
+    expect(liveNodeConfig().tools).not.toContainEqual({ type: 'web_search' })
+  })
+
+  it('gives the delegate web search and tells the model about it', async () => {
+    await running({ ...CREDS, webSearch: true })
+    expect(liveNodeConfig().tools).toContainEqual({ type: 'web_search' })
+    expect(liveNodeConfig().instructions).toContain('the delegate can search the web')
+  })
+
+  it('keeps web search when tools change', async () => {
+    const toolkit = await running({ ...CREDS, webSearch: true })
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    expect(setValuesFor('liveNode', 'tools').pop().params.value).toContainEqual({
+      type: 'web_search',
+    })
+  })
+})
+
 describe('event dispatch', () => {
   it('classifies a dotted node URI by its last segment, and drops unknown nodes', async () => {
     const toolkit = await running()
@@ -693,7 +1017,7 @@ describe('requestMicrophonePermission', () => {
 
 describe('Android', () => {
   const originalOS = Platform.OS
-  let audioSession: { startAudioSession: jest.Mock; stopAudioSession: jest.Mock }
+  let audioSession: Record<string, jest.Mock>
   let permission: jest.SpyInstance
   let version: jest.SpyInstance
 
@@ -792,5 +1116,44 @@ describe('Android', () => {
     scriptNative(() => makeRpcResponse(undefined, { code: -1, message: 'nope' }))
     expect(() => toolkit.stop()).toThrow(OpenAILiveError)
     expect(audioSession.stopAudioSession).not.toHaveBeenCalled()
+  })
+  describe('idle mode', () => {
+    // One per setIdleTimer call; the native module resolves a replaced timer with false.
+    let timers: ((fired: boolean) => void)[]
+
+    beforeEach(() => {
+      timers = []
+      audioSession.setIdleTimer = jest.fn(
+        () => new Promise<boolean>((resolve) => timers.push(resolve))
+      )
+      audioSession.cancelIdleTimer = jest.fn()
+    })
+
+    async function live() {
+      const toolkit = await running({ ...CREDS, idleTimeoutMs: 10_000 })
+      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+      return toolkit
+    }
+
+    it('counts down natively, since JS timers stop in the background', async () => {
+      await live()
+      expect(audioSession.setIdleTimer).toHaveBeenLastCalledWith(10_000)
+      timers[timers.length - 1](true)
+      await flush()
+      expect(commandFor('endSession')).toBeDefined()
+    })
+
+    it('ignores a timer that was replaced', async () => {
+      await live()
+      timers[timers.length - 1](false)
+      await flush()
+      expect(commandFor('endSession')).toBeUndefined()
+    })
+
+    it('cancels the native timer on stop', async () => {
+      const toolkit = await live()
+      toolkit.stop()
+      expect(audioSession.cancelIdleTimer).toHaveBeenCalled()
+    })
   })
 })
