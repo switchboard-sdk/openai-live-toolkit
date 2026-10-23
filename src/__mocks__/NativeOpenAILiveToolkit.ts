@@ -25,6 +25,25 @@ const getCachePath = jest.fn<string, []>(() => '/mock/caches')
 const startLogFile = jest.fn<void, [string]>()
 const log = jest.fn<void, [string]>()
 const exportLogFile = jest.fn<string, []>(() => '/mock/caches/openai-live-toolkit-log.txt')
+const isBluetoothConnected = jest.fn<boolean, []>(() => false)
+
+// The subscriber currently registered via onBluetoothChanged (null once removed).
+let bluetoothCallback: ((connected: boolean) => void) | null = null
+const onBluetoothChanged = jest.fn((cb: (connected: boolean) => void) => {
+  bluetoothCallback = cb
+  return {
+    remove: jest.fn(() => {
+      if (bluetoothCallback === cb) {
+        bluetoothCallback = null
+      }
+    }),
+  }
+})
+
+/** Push an audio route change through the onBluetoothChanged listener. */
+export function emitBluetooth(connected: boolean): void {
+  bluetoothCallback?.(connected)
+}
 
 const onEventReceived = jest.fn((cb: EventCallback) => {
   currentCallback = cb
@@ -68,6 +87,10 @@ export function resetNativeMock(): void {
   exportLogFile.mockReturnValue('/mock/caches/openai-live-toolkit-log.txt')
   onEventReceived.mockClear()
   currentCallback = null
+  isBluetoothConnected.mockReset()
+  isBluetoothConnected.mockReturnValue(false)
+  onBluetoothChanged.mockClear()
+  bluetoothCallback = null
 }
 
 const NativeOpenAILiveToolkitMock = {
@@ -81,6 +104,8 @@ const NativeOpenAILiveToolkitMock = {
   log,
   exportLogFile,
   onEventReceived,
+  isBluetoothConnected,
+  onBluetoothChanged,
 }
 
 export default NativeOpenAILiveToolkitMock

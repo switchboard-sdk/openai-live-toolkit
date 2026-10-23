@@ -22,6 +22,8 @@ jest.mock('./OpenAILiveToolkit', () => ({
     unregisterTool: jest.fn(),
     addEventListener: jest.fn(() => ({ remove: jest.fn() })),
     addErrorListener: jest.fn(() => ({ remove: jest.fn() })),
+    isBluetoothConnected: jest.fn(() => false),
+    addBluetoothListener: jest.fn(() => ({ remove: jest.fn() })),
   },
   // The provider constructs this on a failed start(); these tests never fail one,
   // but the import has to resolve.

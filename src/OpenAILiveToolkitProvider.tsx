@@ -7,6 +7,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react'
+import { Platform } from 'react-native'
 import {
   openAILiveToolkit,
   OpenAILiveError,
@@ -15,6 +16,7 @@ import {
   type OpenAILiveToolkit,
   type OpenAILiveToolkitTool,
   type OpenAILiveTransport,
+  type Microphone,
   type OtherAudioDucking,
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
@@ -43,6 +45,19 @@ export interface SpeakerIsolation {
   enabled: boolean
   /** Turn it on or off. Applied live. */
   setEnabled: (enabled: boolean) => void
+}
+
+/** iOS Bluetooth controls. */
+export interface BluetoothAudio {
+  /**
+   * Whether a Bluetooth headset, car or speaker is connected. With `microphone: 'bluetooth'` a
+   * device without a microphone isn't used, so it isn't reported. Always false on Android.
+   */
+  connected: boolean
+  /** The microphone the model hears while one is: the device's, or the phone's. */
+  microphone: Microphone
+  /** Choose the microphone. Applied live. No-op on Android. */
+  setMicrophone: (microphone: Microphone) => void
 }
 
 /** Value exposed by {@link useOpenAILiveToolkit}. */
@@ -106,6 +121,8 @@ export interface OpenAILiveToolkitContextValue {
   model: string
   /** Speaker isolation controls. */
   speakerIsolation: SpeakerIsolation
+  /** iOS Bluetooth controls: offer the microphone choice while `connected`. */
+  bluetooth: BluetoothAudio
   /** Whether the model is prevented from hearing the microphone. */
   muted: boolean
   /** Mute or unmute the microphone for the model. */
@@ -186,6 +203,12 @@ export interface OpenAILiveToolkitProviderProps {
   mixWithOthers?: boolean
   /** iOS 17+, with `mixWithOthers`: how far other apps' audio is lowered while someone talks. Defaults to `'min'`. */
   otherAudioDucking?: OtherAudioDucking
+  /**
+   * iOS, with a Bluetooth device connected: `'phone'` (default) plays over Bluetooth in high
+   * quality with the phone's microphone; `'bluetooth'` uses the device's microphone, with
+   * call-quality audio. Also settable via the hook.
+   */
+  microphone?: Microphone
   /** Called for every failure, including non-fatal ones that never reach `error`. */
   onError?: (error: OpenAILiveError) => void
   children?: ReactNode
@@ -225,6 +248,8 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   const [isolationAvailable, setIsolationAvailable] = useState(false)
   const [isolationEnabled, setIsolationEnabled] = useState(props.speakerIsolation ?? true)
   const [muted, setMutedState] = useState(false)
+  const [microphone, setMicrophoneState] = useState<Microphone>(props.microphone ?? 'phone')
+  const [bluetoothConnected, setBluetoothConnected] = useState(false)
 
   const reportError = useCallback((err: OpenAILiveError) => {
     onErrorRef.current?.(err)
@@ -261,10 +286,13 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       logConversation: props.logConversation,
       mixWithOthers: props.mixWithOthers,
       otherAudioDucking: props.otherAudioDucking,
+      microphone,
     })
     setIsRunning(toolkit.isRunning)
     setIsolationSupported(toolkit.isSpeakerIsolationSupported)
     setIsolationAvailable(toolkit.isSpeakerIsolationAvailable)
+    setBluetoothConnected(toolkit.isBluetoothConnected())
+    const bluetoothSub = toolkit.addBluetoothListener(setBluetoothConnected)
 
     const nextId = () => ++entryIdRef.current
     const sub = toolkit.addEventListener('live', (e) => {
@@ -313,6 +341,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       // Detach this view's listeners only — the engine's lifecycle is app-owned.
       sub.remove()
       errorSub.remove()
+      bluetoothSub.remove()
     }
     // Settings are init-only seeds here; runtime changes go through the setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -404,6 +433,14 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     toolkitRef.current?.setMuted(next)
   }, [])
 
+  const setMicrophone = useCallback((next: Microphone) => {
+    if (Platform.OS !== 'ios') {
+      return
+    }
+    setMicrophoneState(next)
+    toolkitRef.current?.setMicrophone(next)
+  }, [])
+
   const registerTool = useCallback((tool: OpenAILiveToolkitTool) => {
     toolkitRef.current?.registerTool(tool)
   }, [])
@@ -441,6 +478,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       enabled: isolationEnabled,
       setEnabled: setSpeakerIsolationEnabled,
     },
+    bluetooth: { connected: bluetoothConnected, microphone, setMicrophone },
     muted,
     setMuted,
     registerTool,

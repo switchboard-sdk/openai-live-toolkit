@@ -38,6 +38,7 @@ NativeOpenAILiveToolkit::NativeOpenAILiveToolkit(std::shared_ptr<CallInvoker> js
 static std::string s_documentsPath;
 static std::string s_cachePath;
 static MicrophonePermissionHook s_micPermissionHook;
+static BluetoothConnectedHook s_bluetoothConnectedHook;
 
 void NativeOpenAILiveToolkit::setDocumentsPath(const std::string& path) {
   s_documentsPath = path;
@@ -53,6 +54,18 @@ std::string NativeOpenAILiveToolkit::getCachePath(jsi::Runtime& rt) {
 
 void NativeOpenAILiveToolkit::setMicrophonePermissionHook(MicrophonePermissionHook hook) {
   s_micPermissionHook = std::move(hook);
+}
+
+void NativeOpenAILiveToolkit::setBluetoothConnectedHook(BluetoothConnectedHook hook) {
+  s_bluetoothConnectedHook = std::move(hook);
+}
+
+bool NativeOpenAILiveToolkit::isBluetoothConnected(jsi::Runtime& rt) {
+  return s_bluetoothConnectedHook && s_bluetoothConnectedHook();
+}
+
+void NativeOpenAILiveToolkit::notifyBluetoothChanged(bool connected) {
+  emitOnBluetoothChanged(connected);
 }
 
 std::string NativeOpenAILiveToolkit::getDocumentsPath(jsi::Runtime& rt) {
