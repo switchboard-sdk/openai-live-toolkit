@@ -49,7 +49,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `voice`, `setVoice(voice)` | Fixed per session, like `setInstructions`. |
 | `model` | Read-only. |
 | `speakerIsolation` | `{ supported, available, enabled, setEnabled }`. `supported`: the build links AICoustics. `available`: supported and a license key was given. Applied live. See [Speaker isolation](getting-started.md#speaker-isolation). |
-| `bluetoothA2DP`, `setBluetoothA2DP(enabled)` | iOS: Bluetooth in high quality (A2DP) with the phone's microphone, or the headset's microphone with call-quality audio (HFP). Applied live; audio restarts if a Bluetooth device is in use. Always false on Android. |
+| `bluetoothA2DP`, `setBluetoothA2DP(enabled)` | iOS: Bluetooth in high quality (A2DP) with the phone's microphone, or the headset's microphone with call-quality audio (HFP). Applied live: audio restarts briefly, also onto or off an A2DP-only device like a Bluetooth speaker. Always false on Android. |
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `registerTool(tool)`, `unregisterTool(name)` | See [Tools](tools.md). |
 | `shareLogs()` | Opens the share sheet with the log file, about the last 2 MB. Rejects unless the provider has `logFile` on. |

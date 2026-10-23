@@ -852,8 +852,8 @@ export function createOpenAILiveToolkit() {
 
   /**
    * iOS: switch Bluetooth between A2DP (high-quality output, the phone's microphone) and HFP (the
-   * headset's microphone, call-quality output). Applied live; audio restarts if a Bluetooth
-   * device is in use. No-op on Android.
+   * headset's microphone, call-quality output). Applied live: audio restarts briefly, also onto
+   * or off an A2DP-only device like a Bluetooth speaker. No-op on Android.
    */
   function setBluetoothA2DP(enabled: boolean): void {
     if (Platform.OS !== 'ios') {
