@@ -15,6 +15,7 @@ import {
   type OpenAILiveToolkit,
   type OpenAILiveToolkitTool,
   type OpenAILiveTransport,
+  type OtherAudioDucking,
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
@@ -181,6 +182,10 @@ export interface OpenAILiveToolkitProviderProps {
   logFile?: boolean
   /** Include the transcript and tool arguments and results in the log. Off by default. */
   logConversation?: boolean
+  /** iOS: play alongside other apps' audio, like music, instead of stopping it. Off by default. */
+  mixWithOthers?: boolean
+  /** iOS 17+, with `mixWithOthers`: how far other apps' audio is lowered while someone talks. Defaults to `'min'`. */
+  otherAudioDucking?: OtherAudioDucking
   /** Called for every failure, including non-fatal ones that never reach `error`. */
   onError?: (error: OpenAILiveError) => void
   children?: ReactNode
@@ -254,6 +259,8 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       webSearch: props.webSearch,
       logFile: props.logFile,
       logConversation: props.logConversation,
+      mixWithOthers: props.mixWithOthers,
+      otherAudioDucking: props.otherAudioDucking,
     })
     setIsRunning(toolkit.isRunning)
     setIsolationSupported(toolkit.isSpeakerIsolationSupported)

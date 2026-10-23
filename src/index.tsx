@@ -24,6 +24,7 @@ export type {
   OpenAILiveStartOptions,
   OpenAILiveToolkitTool,
   OpenAILiveTransport,
+  OtherAudioDucking,
 } from './OpenAILiveToolkit'
 export { OpenAILiveError } from './OpenAILiveToolkit'
 export type { OpenAILiveErrorCode } from './OpenAILiveToolkit'

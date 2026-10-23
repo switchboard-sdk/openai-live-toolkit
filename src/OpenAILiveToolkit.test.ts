@@ -941,6 +941,21 @@ describe('logs', () => {
   })
 })
 
+describe('other audio', () => {
+  it('stops other audio by default', async () => {
+    await running()
+    expect(engineConfig().configuration.mixWithOthers).toBeUndefined()
+  })
+
+  it('mixes with other audio on iOS, ducking it to the minimum by default', async () => {
+    await running({ ...CREDS, mixWithOthers: true })
+    expect(engineConfig().configuration).toMatchObject({
+      mixWithOthers: true,
+      otherAudioDucking: 'min',
+    })
+  })
+})
+
 describe('web search', () => {
   it('is off by default', async () => {
     await running()

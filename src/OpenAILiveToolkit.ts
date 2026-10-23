@@ -143,7 +143,19 @@ export interface OpenAILiveToolkitInitializeOptions {
   logFile?: boolean
   /** Include the transcript and tool arguments and results in the log. Off by default. */
   logConversation?: boolean
+  /**
+   * iOS: play alongside other apps' audio, like music, instead of stopping it. Off by default.
+   * Voice processing still lowers that audio; see {@link otherAudioDucking}.
+   */
+  mixWithOthers?: boolean
+  /**
+   * iOS 17+, with {@link mixWithOthers}: how far voice processing lowers other apps' audio, and
+   * only while someone talks. `'default'` keeps the system's ducking. Defaults to `'min'`.
+   */
+  otherAudioDucking?: OtherAudioDucking
 }
+
+export type OtherAudioDucking = 'default' | 'min' | 'mid' | 'max'
 
 /**
  * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
@@ -280,7 +292,8 @@ function buildLiveEngine(
   },
   isolation: { available: boolean; enabled: boolean },
   idleMode: boolean,
-  store: boolean
+  store: boolean,
+  otherAudio: { mix: boolean; ducking: OtherAudioDucking }
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -373,7 +386,12 @@ function buildLiveEngine(
       // start; the output usage also puts playback on the in-call volume the keys control.
       ...(Platform.OS === 'android'
         ? { inputPreset: 'VOICE_COMMUNICATION', outputUsage: 'USAGE_VOICE_COMMUNICATION' }
-        : { voiceProcessingEnabled: true }),
+        : {
+            voiceProcessingEnabled: true,
+            ...(otherAudio.mix
+              ? { mixWithOthers: true, otherAudioDucking: otherAudio.ducking }
+              : {}),
+          }),
       graph: {
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
         nodes,
@@ -451,6 +469,7 @@ export function createOpenAILiveToolkit() {
 
   let webSearch = false
   let logConversation = false
+  let otherAudio: { mix: boolean; ducking: OtherAudioDucking } = { mix: false, ducking: 'min' }
   // The transcript turn being collected for the log.
   let turnSpeaker: 'user' | 'assistant' | null = null
   let turnText = ''
@@ -540,6 +559,10 @@ export function createOpenAILiveToolkit() {
     wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
     continueConversation = options.continueConversation ?? false
     webSearch = options.webSearch ?? false
+    otherAudio = {
+      mix: options.mixWithOthers ?? false,
+      ducking: options.otherAudioDucking ?? 'min',
+    }
     logConversation = options.logConversation ?? false
 
     const apiUrl = options.apiUrl?.trim() ?? ''
@@ -693,7 +716,8 @@ export function createOpenAILiveToolkit() {
           session,
           { available: isolationAvailable, enabled: speakerIsolation },
           idleTimeoutMs > 0,
-          idleTimeoutMs > 0 || continueConversation
+          idleTimeoutMs > 0 || continueConversation,
+          otherAudio
         )
       )
       id = res.result as string

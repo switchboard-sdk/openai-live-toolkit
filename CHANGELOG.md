@@ -20,3 +20,4 @@ All notable changes to this project are documented here. The format follows [Kee
 - `continueConversation`: `start()` after `stop()` continues the conversation, forked from the session the stop closed, and `start({ continueSessionId })` continues a session the app saved before it was killed. OpenAI stores each session while it's on. `sessionId` and `newConversation()` on the hook; the example app resumes a conversation from the last 24 hours.
 - `logFile`, `logConversation` and `shareLogs()`: the SDK's log and the toolkit's events, optionally with the conversation, in a file in the caches directory, shared through the share sheet. The example app has a Share logs link.
 - `webSearch`: the delegate can search the web, for weather, news and other current information.
+- `mixWithOthers` and `otherAudioDucking` (iOS): music from other apps keeps playing, lowered only while someone talks.

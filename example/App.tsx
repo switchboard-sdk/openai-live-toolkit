@@ -59,6 +59,8 @@ export default function App(): React.JSX.Element {
         idleTimeoutMs={IDLE_TIMEOUT_MS}
         continueConversation
         webSearch
+        // Keep music from other apps playing.
+        mixWithOthers
         // A testing app: keep the conversation in the log, for Share logs.
         logFile
         logConversation>

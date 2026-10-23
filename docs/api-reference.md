@@ -25,6 +25,8 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `webSearch` | `false` | Give the delegate OpenAI's hosted web search, so the model can answer about weather, news and other current information. Each search is billed. |
 | `logFile` | `false` | Write the SDK's log and the toolkit's events (sessions, idle and wake, delegations, tool calls, errors) to a file in the caches directory, for `shareLogs()`. |
 | `logConversation` | `false` | Include the transcript and tool arguments and results in that log. |
+| `mixWithOthers` | `false` | iOS: play alongside other apps' audio, like music, instead of stopping it. Voice processing removes it from what the model hears. |
+| `otherAudioDucking` | `'min'` | iOS 17+, with `mixWithOthers`: how far other apps' audio is lowered, and only while someone talks (`'min'`, `'mid'`, `'max'`). `'default'` keeps the system's ducking, which lowers it the whole time. |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
 ## `useOpenAILiveToolkit()`
