@@ -84,6 +84,8 @@ function Screen(): React.JSX.Element {
     instructions,
     voice,
     speakerIsolation,
+    bluetoothA2DP,
+    setBluetoothA2DP,
     muted,
     setMuted,
     shareLogs,
@@ -196,6 +198,17 @@ function Screen(): React.JSX.Element {
                   'See the example README.'}
           </Text>
         )}
+        {Platform.OS === 'ios' ? (
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>High-quality Bluetooth</Text>
+            <Switch value={bluetoothA2DP} onValueChange={setBluetoothA2DP} />
+          </View>
+        ) : null}
+        {bluetoothA2DP ? (
+          <Text style={styles.hint}>
+            Bluetooth plays in high quality, and the model hears the phone's microphone.
+          </Text>
+        ) : null}
         <View style={styles.toggleRow}>
           <Text style={styles.toggleLabel}>Mute microphone</Text>
           <Switch value={muted} onValueChange={setMuted} />

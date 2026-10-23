@@ -32,6 +32,7 @@ jest.mock('./OpenAILiveToolkit', () => {
     say: jest.fn(() => true),
     setVoice: jest.fn(),
     setSpeakerIsolation: jest.fn(),
+    setBluetoothA2DP: jest.fn(),
     setMuted: jest.fn(),
     registerTool: jest.fn(),
     unregisterTool: jest.fn(),
@@ -126,6 +127,7 @@ describe('initialization', () => {
       voice: 'marin',
       model: 'gpt-live-1',
       muted: false,
+      bluetoothA2DP: false,
       speakerIsolation: { supported: true, available: true, enabled: true },
     })
   })
@@ -320,19 +322,22 @@ describe('conversation', () => {
 })
 
 describe('setters delegate and stay reactive', () => {
-  it('instructions, voice, isolation and mute', () => {
+  it('instructions, voice, isolation, Bluetooth and mute', () => {
     const { result } = renderProvider()
     act(() => result.current.setInstructions('New prompt'))
     act(() => result.current.setVoice('cedar'))
     act(() => result.current.speakerIsolation.setEnabled(false))
+    act(() => result.current.setBluetoothA2DP(true))
     act(() => result.current.setMuted(true))
     expect(toolkit.setInstructions).toHaveBeenCalledWith('New prompt')
     expect(toolkit.setVoice).toHaveBeenCalledWith('cedar')
     expect(toolkit.setSpeakerIsolation).toHaveBeenCalledWith(false)
+    expect(toolkit.setBluetoothA2DP).toHaveBeenCalledWith(true)
     expect(toolkit.setMuted).toHaveBeenCalledWith(true)
     expect(result.current).toMatchObject({
       instructions: 'New prompt',
       voice: 'cedar',
+      bluetoothA2DP: true,
       muted: true,
       speakerIsolation: { enabled: false },
     })

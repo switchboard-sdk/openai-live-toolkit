@@ -7,6 +7,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react'
+import { Platform } from 'react-native'
 import {
   openAILiveToolkit,
   OpenAILiveError,
@@ -106,6 +107,13 @@ export interface OpenAILiveToolkitContextValue {
   model: string
   /** Speaker isolation controls. */
   speakerIsolation: SpeakerIsolation
+  /**
+   * iOS: whether Bluetooth plays in high quality (A2DP) with the phone's microphone, rather than
+   * through the headset's microphone with call-quality audio (HFP). Always false on Android.
+   */
+  bluetoothA2DP: boolean
+  /** iOS: switch Bluetooth between A2DP and HFP. Applied live. */
+  setBluetoothA2DP: (enabled: boolean) => void
   /** Whether the model is prevented from hearing the microphone. */
   muted: boolean
   /** Mute or unmute the microphone for the model. */
@@ -186,6 +194,11 @@ export interface OpenAILiveToolkitProviderProps {
   mixWithOthers?: boolean
   /** iOS 17+, with `mixWithOthers`: how far other apps' audio is lowered while someone talks. Defaults to `'min'`. */
   otherAudioDucking?: OtherAudioDucking
+  /**
+   * iOS: start with Bluetooth in high quality (A2DP) and the phone's microphone, instead of the
+   * headset's microphone with call-quality audio (HFP). Off by default. Also settable via the hook.
+   */
+  bluetoothA2DP?: boolean
   /** Called for every failure, including non-fatal ones that never reach `error`. */
   onError?: (error: OpenAILiveError) => void
   children?: ReactNode
@@ -225,6 +238,9 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   const [isolationAvailable, setIsolationAvailable] = useState(false)
   const [isolationEnabled, setIsolationEnabled] = useState(props.speakerIsolation ?? true)
   const [muted, setMutedState] = useState(false)
+  const [bluetoothA2DP, setBluetoothA2DPState] = useState(
+    Platform.OS === 'ios' && (props.bluetoothA2DP ?? false)
+  )
 
   const reportError = useCallback((err: OpenAILiveError) => {
     onErrorRef.current?.(err)
@@ -261,6 +277,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       logConversation: props.logConversation,
       mixWithOthers: props.mixWithOthers,
       otherAudioDucking: props.otherAudioDucking,
+      bluetoothA2DP,
     })
     setIsRunning(toolkit.isRunning)
     setIsolationSupported(toolkit.isSpeakerIsolationSupported)
@@ -404,6 +421,14 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     toolkitRef.current?.setMuted(next)
   }, [])
 
+  const setBluetoothA2DP = useCallback((next: boolean) => {
+    if (Platform.OS !== 'ios') {
+      return
+    }
+    setBluetoothA2DPState(next)
+    toolkitRef.current?.setBluetoothA2DP(next)
+  }, [])
+
   const registerTool = useCallback((tool: OpenAILiveToolkitTool) => {
     toolkitRef.current?.registerTool(tool)
   }, [])
@@ -441,6 +466,8 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       enabled: isolationEnabled,
       setEnabled: setSpeakerIsolationEnabled,
     },
+    bluetoothA2DP,
+    setBluetoothA2DP,
     muted,
     setMuted,
     registerTool,

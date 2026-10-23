@@ -956,6 +956,46 @@ describe('other audio', () => {
   })
 })
 
+describe('bluetooth', () => {
+  function a2dpValues(): boolean[] {
+    return setValuesFor('engine-1', 'allowBluetoothA2DP').map((c) => c.params.value)
+  }
+
+  it('uses HFP by default', async () => {
+    await running()
+    expect(engineConfig().configuration.allowBluetoothA2DP).toBeUndefined()
+  })
+
+  it('starts on A2DP and switches live on iOS', async () => {
+    const toolkit = await running({ ...CREDS, bluetoothA2DP: true })
+    expect(engineConfig().configuration.allowBluetoothA2DP).toBe(true)
+    toolkit.setBluetoothA2DP(false)
+    expect(a2dpValues()).toEqual([false])
+  })
+
+  it('stays on HFP on Android', async () => {
+    const originalOS = Platform.OS
+    Platform.OS = 'android'
+    NativeModules.OpenAILiveToolkitAndroid = {
+      startAudioSession: jest.fn().mockResolvedValue(undefined),
+      stopAudioSession: jest.fn().mockResolvedValue(undefined),
+    }
+    const permission = jest
+      .spyOn(PermissionsAndroid, 'request')
+      .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED)
+    try {
+      const toolkit = await running({ ...CREDS, bluetoothA2DP: true })
+      expect(engineConfig().configuration.allowBluetoothA2DP).toBeUndefined()
+      toolkit.setBluetoothA2DP(true)
+      expect(a2dpValues()).toEqual([])
+    } finally {
+      Platform.OS = originalOS
+      delete NativeModules.OpenAILiveToolkitAndroid
+      permission.mockRestore()
+    }
+  })
+})
+
 describe('web search', () => {
   it('is off by default', async () => {
     await running()

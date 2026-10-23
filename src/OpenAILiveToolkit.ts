@@ -153,6 +153,12 @@ export interface OpenAILiveToolkitInitializeOptions {
    * only while someone talks. `'default'` keeps the system's ducking. Defaults to `'min'`.
    */
   otherAudioDucking?: OtherAudioDucking
+  /**
+   * iOS: play through Bluetooth headphones or a car in high quality (A2DP) and listen through
+   * the phone's microphone, instead of the headset's microphone with call-quality audio (HFP).
+   * Off by default; see {@link OpenAILiveToolkit.setBluetoothA2DP}. Android always uses HFP.
+   */
+  bluetoothA2DP?: boolean
 }
 
 export type OtherAudioDucking = 'default' | 'min' | 'mid' | 'max'
@@ -293,7 +299,8 @@ function buildLiveEngine(
   isolation: { available: boolean; enabled: boolean },
   idleMode: boolean,
   store: boolean,
-  otherAudio: { mix: boolean; ducking: OtherAudioDucking }
+  otherAudio: { mix: boolean; ducking: OtherAudioDucking },
+  bluetoothA2DP: boolean
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -391,6 +398,7 @@ function buildLiveEngine(
             ...(otherAudio.mix
               ? { mixWithOthers: true, otherAudioDucking: otherAudio.ducking }
               : {}),
+            ...(bluetoothA2DP ? { allowBluetoothA2DP: true } : {}),
           }),
       graph: {
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
@@ -470,6 +478,7 @@ export function createOpenAILiveToolkit() {
   let webSearch = false
   let logConversation = false
   let otherAudio: { mix: boolean; ducking: OtherAudioDucking } = { mix: false, ducking: 'min' }
+  let bluetoothA2DP = false
   // The transcript turn being collected for the log.
   let turnSpeaker: 'user' | 'assistant' | null = null
   let turnText = ''
@@ -563,6 +572,7 @@ export function createOpenAILiveToolkit() {
       mix: options.mixWithOthers ?? false,
       ducking: options.otherAudioDucking ?? 'min',
     }
+    bluetoothA2DP = options.bluetoothA2DP ?? false
     logConversation = options.logConversation ?? false
 
     const apiUrl = options.apiUrl?.trim() ?? ''
@@ -717,7 +727,8 @@ export function createOpenAILiveToolkit() {
           { available: isolationAvailable, enabled: speakerIsolation },
           idleTimeoutMs > 0,
           idleTimeoutMs > 0 || continueConversation,
-          otherAudio
+          otherAudio,
+          bluetoothA2DP
         )
       )
       id = res.result as string
@@ -836,6 +847,22 @@ export function createOpenAILiveToolkit() {
     speakerIsolation = enabled
     if (engineId && isolationAvailable) {
       client?.setValue(ISOLATION_NODE, 'enabled', enabled)
+    }
+  }
+
+  /**
+   * iOS: switch Bluetooth between A2DP (high-quality output, the phone's microphone) and HFP (the
+   * headset's microphone, call-quality output). Applied live; audio restarts if a Bluetooth
+   * device is in use. No-op on Android.
+   */
+  function setBluetoothA2DP(enabled: boolean): void {
+    if (Platform.OS !== 'ios') {
+      return
+    }
+    log(`bluetooth ${enabled ? 'A2DP' : 'HFP'}`)
+    bluetoothA2DP = enabled
+    if (engineId) {
+      client?.setValue(engineId, 'allowBluetoothA2DP', enabled)
     }
   }
 
@@ -1216,6 +1243,7 @@ export function createOpenAILiveToolkit() {
     say,
     setVoice,
     setSpeakerIsolation,
+    setBluetoothA2DP,
     setMuted,
     registerTool,
     unregisterTool,
