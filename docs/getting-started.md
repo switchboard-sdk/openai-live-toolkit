@@ -58,7 +58,7 @@ With both, `speakerIsolation.available` is true and Quail sits in front of the m
 - **iOS 14 or later.** `SwitchboardOpenAI` links libwebrtc, which is built for iOS 14.
 - **Microphone string.** Add `NSMicrophoneUsageDescription` to `Info.plist`.
 - **Background audio.** To keep a conversation going with the screen locked or the app in the background, add `audio` to `UIBackgroundModes`. Without it iOS suspends the app, the connection drops, and a new session starts when the app returns. The session keeps billing while backgrounded, so stop the engine when the conversation ends.
-- **Bluetooth.** A Bluetooth headset or car uses HFP by default: its microphone, with call-quality audio. `bluetoothA2DP`, or `setBluetoothA2DP` on the hook while running, switches to A2DP: high-quality audio, with the phone's microphone instead. That suits a phone mounted nearby, as in a car, not one in a pocket.
+- **Bluetooth.** With a Bluetooth headset, car or speaker connected, the model hears the phone's microphone and the voice plays in high quality (A2DP) by default, which suits a phone mounted nearby, as in a car. `microphone: 'bluetooth'`, or `bluetooth.setMicrophone` on the hook while running, uses the device's microphone instead, with call-quality audio (HFP), for a phone in a pocket. A device without a microphone, like a speaker, isn't used then. `bluetooth.connected` tells when to offer the choice; keep offering it while `'bluetooth'` is picked, since a speaker drops out then.
 - **Simulator.** Works without AICoustics, on Apple silicon Macs only: `SwitchboardOpenAI` has no x86_64 simulator slice. With AICoustics linked, build for a physical iPhone: its xcframework has no simulator slice.
 - **New architecture.** The toolkit is a C++ TurboModule; the app must run with the new architecture (the RN default).
 - **Privacy manifest.** The pod ships one declaring the file-timestamp API the frameworks use; it's merged into the app's privacy report automatically.
@@ -106,7 +106,7 @@ The rest comes with the library:
 - **Permissions.** `RECORD_AUDIO`, `INTERNET`, `MODIFY_AUDIO_SETTINGS`, `POST_NOTIFICATIONS` and the microphone foreground service merge in from its manifest. `start()` asks for the microphone and, on Android 13+, for notifications. Without the latter the conversation still runs, but the foreground service's notification stays hidden.
 - **Background.** While the engine runs, a microphone foreground service with an ongoing notification keeps the conversation going with the screen locked or another app in front. Swiping the app away stops it. The session keeps billing meanwhile, so stop the engine when the conversation ends.
 - **Echo cancellation.** The mic and speaker open for voice communication and the audio mode switches to communication, routed to a connected headset, else the loudspeaker. Playback follows the in-call volume, which the volume keys control during a conversation. The canceller is the device's, so how well it works varies by phone.
-- **Bluetooth** always uses the headset's microphone and call-quality audio (HFP); `bluetoothA2DP` is iOS only.
+- **Bluetooth** always uses the headset's microphone and call-quality audio (HFP); `microphone` is iOS only.
 - **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
 
 The emulator works for arm64 and x86_64 images.

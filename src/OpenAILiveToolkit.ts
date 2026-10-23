@@ -154,14 +154,18 @@ export interface OpenAILiveToolkitInitializeOptions {
    */
   otherAudioDucking?: OtherAudioDucking
   /**
-   * iOS: play through Bluetooth headphones or a car in high quality (A2DP) and listen through
-   * the phone's microphone, instead of the headset's microphone with call-quality audio (HFP).
-   * Off by default; see {@link OpenAILiveToolkit.setBluetoothA2DP}. Android always uses HFP.
+   * iOS, with a Bluetooth headset, car or speaker connected: which microphone the model hears.
+   * `'phone'` (default) plays over Bluetooth in high quality (A2DP); `'bluetooth'` uses the
+   * device's microphone, with call-quality audio (HFP), and leaves a device without a microphone
+   * unused. See {@link OpenAILiveToolkit.setMicrophone}. Android always uses the device's.
    */
-  bluetoothA2DP?: boolean
+  microphone?: Microphone
 }
 
 export type OtherAudioDucking = 'default' | 'min' | 'mid' | 'max'
+
+/** The microphone the model hears while a Bluetooth device is connected. */
+export type Microphone = 'bluetooth' | 'phone'
 
 /**
  * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
@@ -300,7 +304,7 @@ function buildLiveEngine(
   idleMode: boolean,
   store: boolean,
   otherAudio: { mix: boolean; ducking: OtherAudioDucking },
-  bluetoothA2DP: boolean
+  microphone: Microphone
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -398,7 +402,8 @@ function buildLiveEngine(
             ...(otherAudio.mix
               ? { mixWithOthers: true, otherAudioDucking: otherAudio.ducking }
               : {}),
-            ...(bluetoothA2DP ? { allowBluetoothA2DP: true } : {}),
+            // The phone's microphone is the engine's A2DP mode.
+            ...(microphone === 'phone' ? { allowBluetoothA2DP: true } : {}),
           }),
       graph: {
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
@@ -478,7 +483,7 @@ export function createOpenAILiveToolkit() {
   let webSearch = false
   let logConversation = false
   let otherAudio: { mix: boolean; ducking: OtherAudioDucking } = { mix: false, ducking: 'min' }
-  let bluetoothA2DP = false
+  let microphone: Microphone = 'phone'
   // The transcript turn being collected for the log.
   let turnSpeaker: 'user' | 'assistant' | null = null
   let turnText = ''
@@ -572,7 +577,7 @@ export function createOpenAILiveToolkit() {
       mix: options.mixWithOthers ?? false,
       ducking: options.otherAudioDucking ?? 'min',
     }
-    bluetoothA2DP = options.bluetoothA2DP ?? false
+    microphone = options.microphone ?? 'phone'
     logConversation = options.logConversation ?? false
 
     const apiUrl = options.apiUrl?.trim() ?? ''
@@ -728,7 +733,7 @@ export function createOpenAILiveToolkit() {
           idleTimeoutMs > 0,
           idleTimeoutMs > 0 || continueConversation,
           otherAudio,
-          bluetoothA2DP
+          microphone
         )
       )
       id = res.result as string
@@ -851,19 +856,38 @@ export function createOpenAILiveToolkit() {
   }
 
   /**
-   * iOS: switch Bluetooth between A2DP (high-quality output, the phone's microphone) and HFP (the
-   * headset's microphone, call-quality output). Applied live: audio restarts briefly, also onto
-   * or off an A2DP-only device like a Bluetooth speaker. No-op on Android.
+   * iOS: hear the Bluetooth device's microphone, with call-quality audio, or the phone's, with
+   * high-quality Bluetooth audio; see `microphone`. Applied live: audio restarts briefly. No-op
+   * on Android.
    */
-  function setBluetoothA2DP(enabled: boolean): void {
+  function setMicrophone(next: Microphone): void {
     if (Platform.OS !== 'ios') {
       return
     }
-    log(`bluetooth ${enabled ? 'A2DP' : 'HFP'}`)
-    bluetoothA2DP = enabled
+    log(`microphone ${next}`)
+    microphone = next
     if (engineId) {
-      client?.setValue(engineId, 'allowBluetoothA2DP', enabled)
+      client?.setValue(engineId, 'allowBluetoothA2DP', next === 'phone')
     }
+  }
+
+  /**
+   * iOS: whether a Bluetooth device is connected: one with a microphone, or one audio goes to.
+   * With `microphone: 'bluetooth'` a device without a microphone isn't used, so it isn't reported.
+   * Always false on Android.
+   */
+  function isBluetoothConnected(): boolean {
+    return Platform.OS === 'ios' && NativeOpenAILiveToolkit.isBluetoothConnected()
+  }
+
+  /** iOS: called with {@link isBluetoothConnected} whenever the audio route changes. */
+  function addBluetoothListener(
+    listener: (connected: boolean) => void
+  ): OpenAILiveToolkitSubscription {
+    if (Platform.OS !== 'ios') {
+      return { remove: () => {} }
+    }
+    return NativeOpenAILiveToolkit.onBluetoothChanged(listener)
   }
 
   /** Stop the model hearing the microphone, or let it hear again. Kept across sessions. */
@@ -1243,7 +1267,9 @@ export function createOpenAILiveToolkit() {
     say,
     setVoice,
     setSpeakerIsolation,
-    setBluetoothA2DP,
+    setMicrophone,
+    isBluetoothConnected,
+    addBluetoothListener,
     setMuted,
     registerTool,
     unregisterTool,

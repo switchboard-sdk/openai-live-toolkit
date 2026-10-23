@@ -39,6 +39,15 @@ export interface Spec extends TurboModule {
 
   /** Stream of Switchboard events, delivered as JSON strings. */
   readonly onEventReceived: CodegenTypes.EventEmitter<string>
+
+  /**
+   * iOS: whether a Bluetooth device is connected: a Bluetooth microphone is available, or audio
+   * goes to Bluetooth. Always false on Android.
+   */
+  readonly isBluetoothConnected: () => boolean
+
+  /** iOS: {@link isBluetoothConnected} whenever the audio route changes. */
+  readonly onBluetoothChanged: CodegenTypes.EventEmitter<boolean>
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('OpenAILiveToolkit')

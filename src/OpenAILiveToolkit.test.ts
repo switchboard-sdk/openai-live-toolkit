@@ -19,7 +19,7 @@ import { DEFAULT_SWITCHBOARD_APP_ID, DEFAULT_SWITCHBOARD_APP_SECRET } from './cr
 const mock = jest.requireMock(
   './NativeOpenAILiveToolkit'
 ) as typeof import('./__mocks__/NativeOpenAILiveToolkit')
-const { emit, resetNativeMock } = mock
+const { emit, emitBluetooth, resetNativeMock } = mock
 
 const native = NativeOpenAILiveToolkit as unknown as {
   processCommand: jest.Mock<string, [string]>
@@ -28,6 +28,7 @@ const native = NativeOpenAILiveToolkit as unknown as {
   startLogFile: jest.Mock<void, [string]>
   log: jest.Mock<void, [string]>
   exportLogFile: jest.Mock<string, []>
+  isBluetoothConnected: jest.Mock<boolean, []>
 }
 
 function logged(): string[] {
@@ -961,19 +962,31 @@ describe('bluetooth', () => {
     return setValuesFor('engine-1', 'allowBluetoothA2DP').map((c) => c.params.value)
   }
 
-  it('uses HFP by default', async () => {
+  it("hears the phone's microphone by default, playing over A2DP", async () => {
     await running()
-    expect(engineConfig().configuration.allowBluetoothA2DP).toBeUndefined()
-  })
-
-  it('starts on A2DP and switches live on iOS', async () => {
-    const toolkit = await running({ ...CREDS, bluetoothA2DP: true })
     expect(engineConfig().configuration.allowBluetoothA2DP).toBe(true)
-    toolkit.setBluetoothA2DP(false)
-    expect(a2dpValues()).toEqual([false])
   })
 
-  it('stays on HFP on Android', async () => {
+  it('uses the Bluetooth microphone when chosen, and switches live on iOS', async () => {
+    const toolkit = await running({ ...CREDS, microphone: 'bluetooth' })
+    expect(engineConfig().configuration.allowBluetoothA2DP).toBeUndefined()
+    toolkit.setMicrophone('phone')
+    expect(a2dpValues()).toEqual([true])
+  })
+
+  it('reports a connected Bluetooth device and route changes', () => {
+    native.isBluetoothConnected.mockReturnValue(true)
+    const toolkit = initialized()
+    expect(toolkit.isBluetoothConnected()).toBe(true)
+    const seen: boolean[] = []
+    const sub = toolkit.addBluetoothListener((connected) => seen.push(connected))
+    emitBluetooth(false)
+    sub.remove()
+    emitBluetooth(true)
+    expect(seen).toEqual([false])
+  })
+
+  it('keeps the Bluetooth microphone on Android', async () => {
     const originalOS = Platform.OS
     Platform.OS = 'android'
     NativeModules.OpenAILiveToolkitAndroid = {
@@ -984,10 +997,12 @@ describe('bluetooth', () => {
       .spyOn(PermissionsAndroid, 'request')
       .mockResolvedValue(PermissionsAndroid.RESULTS.GRANTED)
     try {
-      const toolkit = await running({ ...CREDS, bluetoothA2DP: true })
+      native.isBluetoothConnected.mockReturnValue(true)
+      const toolkit = await running({ ...CREDS, microphone: 'phone' })
       expect(engineConfig().configuration.allowBluetoothA2DP).toBeUndefined()
-      toolkit.setBluetoothA2DP(true)
+      toolkit.setMicrophone('phone')
       expect(a2dpValues()).toEqual([])
+      expect(toolkit.isBluetoothConnected()).toBe(false)
     } finally {
       Platform.OS = originalOS
       delete NativeModules.OpenAILiveToolkitAndroid

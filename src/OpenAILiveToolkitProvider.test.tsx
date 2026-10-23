@@ -11,6 +11,7 @@ jest.mock('./OpenAILiveToolkit', () => {
   const { OpenAILiveError } = jest.requireActual('./OpenAILiveToolkit')
   let liveListener: ((e: any) => void) | null = null
   let errorListener: ((e: any) => void) | null = null
+  let bluetoothListener: ((connected: boolean) => void) | null = null
   const openAILiveToolkit = {
     initialize: jest.fn(() => {
       if (openAILiveToolkit.initError) {
@@ -32,7 +33,12 @@ jest.mock('./OpenAILiveToolkit', () => {
     say: jest.fn(() => true),
     setVoice: jest.fn(),
     setSpeakerIsolation: jest.fn(),
-    setBluetoothA2DP: jest.fn(),
+    setMicrophone: jest.fn(),
+    isBluetoothConnected: jest.fn(() => false),
+    addBluetoothListener: jest.fn((listener: (connected: boolean) => void) => {
+      bluetoothListener = listener
+      return { remove: jest.fn(() => (bluetoothListener = null)) }
+    }),
     setMuted: jest.fn(),
     registerTool: jest.fn(),
     unregisterTool: jest.fn(),
@@ -50,6 +56,7 @@ jest.mock('./OpenAILiveToolkit', () => {
     OpenAILiveError,
     __emitLive: (name: string, data?: unknown) => liveListener?.({ type: 'live', name, data }),
     __emitError: (e: any) => errorListener?.(e),
+    __emitBluetooth: (connected: boolean) => bluetoothListener?.(connected),
     __hasListeners: () => liveListener !== null && errorListener !== null,
   }
 })
@@ -61,6 +68,7 @@ const mockModule = jest.requireMock('./OpenAILiveToolkit') as {
   openAILiveToolkit: Record<string, any>
   __emitLive: (name: string, data?: unknown) => void
   __emitError: (e: OpenAILiveError) => void
+  __emitBluetooth: (connected: boolean) => void
   __hasListeners: () => boolean
 }
 const toolkit = mockModule.openAILiveToolkit
@@ -93,6 +101,7 @@ beforeEach(() => {
   toolkit.isSpeakerIsolationAvailable = true
   toolkit.start.mockImplementation(() => Promise.resolve())
   toolkit.requestMicrophonePermission.mockImplementation(() => Promise.resolve(true))
+  toolkit.isBluetoothConnected.mockReturnValue(false)
 })
 
 describe('initialization', () => {
@@ -127,9 +136,17 @@ describe('initialization', () => {
       voice: 'marin',
       model: 'gpt-live-1',
       muted: false,
-      bluetoothA2DP: false,
+      bluetooth: { connected: false, microphone: 'phone' },
       speakerIsolation: { supported: true, available: true, enabled: true },
     })
+  })
+
+  it('follows Bluetooth devices coming and going', () => {
+    toolkit.isBluetoothConnected.mockReturnValue(true)
+    const { result } = renderProvider()
+    expect(result.current.bluetooth.connected).toBe(true)
+    act(() => mockModule.__emitBluetooth(false))
+    expect(result.current.bluetooth.connected).toBe(false)
   })
 
   it('reports isolation as unavailable when the engine has no license key', () => {
@@ -327,17 +344,17 @@ describe('setters delegate and stay reactive', () => {
     act(() => result.current.setInstructions('New prompt'))
     act(() => result.current.setVoice('cedar'))
     act(() => result.current.speakerIsolation.setEnabled(false))
-    act(() => result.current.setBluetoothA2DP(true))
+    act(() => result.current.bluetooth.setMicrophone('bluetooth'))
     act(() => result.current.setMuted(true))
     expect(toolkit.setInstructions).toHaveBeenCalledWith('New prompt')
     expect(toolkit.setVoice).toHaveBeenCalledWith('cedar')
     expect(toolkit.setSpeakerIsolation).toHaveBeenCalledWith(false)
-    expect(toolkit.setBluetoothA2DP).toHaveBeenCalledWith(true)
+    expect(toolkit.setMicrophone).toHaveBeenCalledWith('bluetooth')
     expect(toolkit.setMuted).toHaveBeenCalledWith(true)
     expect(result.current).toMatchObject({
       instructions: 'New prompt',
       voice: 'cedar',
-      bluetoothA2DP: true,
+      bluetooth: { microphone: 'bluetooth' },
       muted: true,
       speakerIsolation: { enabled: false },
     })

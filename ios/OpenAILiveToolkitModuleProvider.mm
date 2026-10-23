@@ -11,6 +11,32 @@
 
 #import "NativeOpenAILiveToolkit.h"
 
+static BOOL IsBluetoothPort(AVAudioSessionPort type) {
+  return [type isEqualToString:AVAudioSessionPortBluetoothHFP] ||
+      [type isEqualToString:AVAudioSessionPortBluetoothA2DP] ||
+      [type isEqualToString:AVAudioSessionPortBluetoothLE];
+}
+
+// A Bluetooth microphone is available, or audio already goes to Bluetooth. A device without a
+// microphone, like a speaker, only shows up once it's the output.
+static bool IsBluetoothConnected() {
+  AVAudioSession *session = [AVAudioSession sharedInstance];
+  for (AVAudioSessionPortDescription *port in session.availableInputs) {
+    if (IsBluetoothPort(port.portType)) {
+      return true;
+    }
+  }
+  for (AVAudioSessionPortDescription *port in session.currentRoute.outputs) {
+    if (IsBluetoothPort(port.portType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// One observer at a time: a JS reload builds a new module.
+static id s_routeObserver;
+
 @implementation OpenAILiveToolkitModuleProvider
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
@@ -45,7 +71,25 @@
         }
       });
 
-  return std::make_shared<facebook::react::NativeOpenAILiveToolkit>(params.jsInvoker);
+  facebook::react::NativeOpenAILiveToolkit::setBluetoothConnectedHook([]() {
+    return IsBluetoothConnected();
+  });
+
+  auto module = std::make_shared<facebook::react::NativeOpenAILiveToolkit>(params.jsInvoker);
+  std::weak_ptr<facebook::react::NativeOpenAILiveToolkit> weakModule = module;
+  NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+  if (s_routeObserver) {
+    [center removeObserver:s_routeObserver];
+  }
+  s_routeObserver = [center addObserverForName:AVAudioSessionRouteChangeNotification
+                                        object:nil
+                                         queue:nil
+                                    usingBlock:^(NSNotification *note) {
+                                      if (auto strong = weakModule.lock()) {
+                                        strong->notifyBluetoothChanged(IsBluetoothConnected());
+                                      }
+                                    }];
+  return module;
 }
 
 @end

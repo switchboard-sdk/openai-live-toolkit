@@ -21,4 +21,4 @@ All notable changes to this project are documented here. The format follows [Kee
 - `logFile`, `logConversation` and `shareLogs()`: the SDK's log and the toolkit's events, optionally with the conversation, in a file in the caches directory, shared through the share sheet. The example app has a Share logs link.
 - `webSearch`: the delegate can search the web, for weather, news and other current information.
 - `mixWithOthers` and `otherAudioDucking` (iOS): music from other apps keeps playing, lowered only while someone talks.
-- `bluetoothA2DP` and `setBluetoothA2DP` (iOS): high-quality Bluetooth audio with the phone's microphone, instead of HFP. The example app has a switch.
+- `microphone` and the hook's `bluetooth` (iOS): with a Bluetooth device connected, hear the phone's microphone with high-quality Bluetooth audio (the default), or the device's microphone in call quality. The example app shows a Microphone: Bluetooth / Phone choice while one is connected.

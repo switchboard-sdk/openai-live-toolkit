@@ -44,6 +44,11 @@ const IDLE_TIMEOUT_MS = 15_000;
 const SAVED_CONVERSATION_KEY = 'savedConversation';
 const MAX_RESUME_AGE_MS = 24 * 60 * 60 * 1000;
 
+const MICROPHONES = [
+  { value: 'bluetooth', label: 'Bluetooth' },
+  { value: 'phone', label: 'Phone' },
+] as const;
+
 type SavedConversation = { sessionId: string; savedAt: number; settings: string };
 
 export default function App(): React.JSX.Element {
@@ -84,8 +89,7 @@ function Screen(): React.JSX.Element {
     instructions,
     voice,
     speakerIsolation,
-    bluetoothA2DP,
-    setBluetoothA2DP,
+    bluetooth,
     muted,
     setMuted,
     shareLogs,
@@ -198,16 +202,29 @@ function Screen(): React.JSX.Element {
                   'See the example README.'}
           </Text>
         )}
-        {Platform.OS === 'ios' ? (
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>High-quality Bluetooth</Text>
-            <Switch value={bluetoothA2DP} onValueChange={setBluetoothA2DP} />
-          </View>
-        ) : null}
-        {bluetoothA2DP ? (
-          <Text style={styles.hint}>
-            Bluetooth plays in high quality, and the model hears the phone's microphone.
-          </Text>
+        {/* Also while Bluetooth is picked: a device without a microphone then drops out, and
+            this is the way back. */}
+        {bluetooth.connected || bluetooth.microphone !== 'phone' ? (
+          <>
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>Microphone</Text>
+              <View style={styles.segments}>
+                {MICROPHONES.map(({ value, label }) => (
+                  <TouchableOpacity
+                    key={value}
+                    style={[styles.segment, bluetooth.microphone === value && styles.segmentActive]}
+                    onPress={() => bluetooth.setMicrophone(value)}>
+                    <Text style={styles.segmentText}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <Text style={styles.hint}>
+              {bluetooth.microphone === 'phone'
+                ? 'Bluetooth plays in high quality; the model hears the phone.'
+                : 'The model hears the Bluetooth microphone, in call quality.'}
+            </Text>
+          </>
         ) : null}
         <View style={styles.toggleRow}>
           <Text style={styles.toggleLabel}>Mute microphone</Text>
@@ -309,4 +326,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   toggleLabel: { fontSize: 14, color: colors.body },
+  segments: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 2,
+  },
+  segment: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
+  segmentActive: { backgroundColor: colors.accent },
+  segmentText: { fontSize: 13, color: colors.text },
 });
