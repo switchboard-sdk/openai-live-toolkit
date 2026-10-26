@@ -27,6 +27,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `logConversation` | `false` | Include the transcript and tool arguments and results in that log. |
 | `mixWithOthers` | `false` | iOS: play alongside other apps' audio, like music, instead of stopping it. Voice processing removes it from what the model hears. |
 | `otherAudioDucking` | `'min'` | iOS 17+, with `mixWithOthers`: how far other apps' audio is lowered, and only while someone talks (`'min'`, `'mid'`, `'max'`). `'default'` keeps the system's ducking, which lowers it the whole time. |
+| `microphone` | `'phone'` | iOS, with a Bluetooth device connected: `'phone'` plays over Bluetooth in high quality (A2DP) and the model hears the phone's microphone; `'bluetooth'` uses the device's microphone, with call-quality audio (HFP). See [iOS setup](getting-started.md#ios-setup). |
 | `onError` | — | Receives every failure, including non-fatal ones. |
 
 ## `useOpenAILiveToolkit()`
@@ -48,6 +49,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `voice`, `setVoice(voice)` | Fixed per session, like `setInstructions`. |
 | `model` | Read-only. |
 | `speakerIsolation` | `{ supported, available, enabled, setEnabled }`. `supported`: the build links AICoustics. `available`: supported and a license key was given. Applied live. See [Speaker isolation](getting-started.md#speaker-isolation). |
+| `bluetooth` | iOS: `{ connected, microphone, setMicrophone }`. `connected`: a Bluetooth headset, car or speaker is in use or has a microphone; offer the microphone choice while it's true. `setMicrophone('bluetooth' \| 'phone')` applies live; audio restarts briefly. `connected` is always false on Android. |
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `registerTool(tool)`, `unregisterTool(name)` | See [Tools](tools.md). |
 | `shareLogs()` | Opens the share sheet with the log file, about the last 2 MB. Rejects unless the provider has `logFile` on. |

@@ -19,8 +19,10 @@ export type {
   OpenAILiveToolkitContextValue,
   OpenAILiveToolkitConnectionStatus,
   SpeakerIsolation,
+  BluetoothAudio,
 } from './OpenAILiveToolkitProvider'
 export type {
+  Microphone,
   OpenAILiveStartOptions,
   OpenAILiveToolkitTool,
   OpenAILiveTransport,

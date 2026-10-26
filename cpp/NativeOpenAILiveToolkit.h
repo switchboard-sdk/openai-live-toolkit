@@ -17,6 +17,9 @@ namespace facebook::react {
 // grant result (async, may complete on any thread).
 using MicrophonePermissionHook = std::function<void(std::function<void(bool)>)>;
 
+// Platform-provided check: a Bluetooth microphone is available, or audio goes to Bluetooth.
+using BluetoothConnectedHook = std::function<bool()>;
+
 /**
  * OpenAILiveToolkit's native core: a C++ TurboModule wrapping `SwitchboardJSONRPC`.
  *
@@ -37,6 +40,10 @@ public:
   void startLogFile(jsi::Runtime& rt, std::string directory);
   void log(jsi::Runtime& rt, std::string message);
   std::string exportLogFile(jsi::Runtime& rt);
+  bool isBluetoothConnected(jsi::Runtime& rt);
+
+  /** Called by the iOS provider when the audio route changes. */
+  void notifyBluetoothChanged(bool connected);
 
   /** Set by the iOS provider at startup. Android reads it from the JVM module instead. */
   static void setDocumentsPath(const std::string& path);
@@ -44,6 +51,8 @@ public:
   static void setCachePath(const std::string& path);
   /** Set by the iOS provider to perform the mic-permission request. Android asks from JS. */
   static void setMicrophonePermissionHook(MicrophonePermissionHook hook);
+  /** Set by the iOS provider. Without it (Android) no Bluetooth device is reported. */
+  static void setBluetoothConnectedHook(BluetoothConnectedHook hook);
 
 private:
   switchboard::SwitchboardJSONRPC switchboard;
