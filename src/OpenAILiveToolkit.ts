@@ -32,6 +32,8 @@ export type OpenAILiveErrorCode =
   | 'TOOL_HANDLER_FAILED'
   /** A tool's result never reached OpenAI — no live session, or a stale call id. */
   | 'TOOL_RESULT_UNDELIVERED'
+  /** Media couldn't play: no running engine, not an http(s) URL, or the stream failed. */
+  | 'MEDIA_FAILED'
 
 /**
  * A failure with a machine-readable {@link OpenAILiveError.code}.
@@ -169,9 +171,26 @@ export type Microphone = 'bluetooth' | 'phone'
 
 /**
  * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
- * (speechStarted / speechEnded) is only there in idle mode.
+ * (speechStarted / speechEnded) is only there in idle mode. `'media'` is the media player's:
+ * stateChanged, metadata and error.
  */
-export type OpenAILiveToolkitEventType = 'live' | 'vad'
+export type OpenAILiveToolkitEventType = 'live' | 'vad' | 'media'
+
+/**
+ * Where the media player is. `'connecting'` and `'buffering'` wait for audio, `'finished'` is a file
+ * played to its end, `'idle'` is nothing loaded.
+ */
+export type MediaState = 'idle' | 'connecting' | 'buffering' | 'ready' | 'finished' | 'error'
+
+/** What a stream says is playing. Fields it doesn't say are empty. */
+export interface MediaMetadata {
+  /** Usually "Artist - Title". */
+  title: string
+  stationName: string
+  genre: string
+  /** The station's website. */
+  url: string
+}
 
 /** A classified Switchboard event. */
 export interface OpenAILiveToolkitEvent {
@@ -240,11 +259,14 @@ interface ToolCall {
 const LIVE_NODE = 'liveNode'
 const ISOLATION_NODE = 'speakerIsolationNode'
 const VAD_NODE = 'vadNode'
+const MEDIA_NODE = 'mediaPlayerNode'
+const MEDIA_VOLUME_NODE = 'mediaVolumeNode'
 
 // The graph's node IDs → event category, used to split the single native event stream.
 const NODE_EVENT_TYPE: Record<string, OpenAILiveToolkitEventType> = {
   [LIVE_NODE]: 'live',
   [VAD_NODE]: 'vad',
+  [MEDIA_NODE]: 'media',
 }
 
 // The graph runs at 48 kHz; Quail wants 16 kHz, so it sits between two resamplers.
@@ -252,6 +274,16 @@ const GRAPH_SAMPLE_RATE = 48000
 const QUAIL_SAMPLE_RATE = 16000
 const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
 const DEFAULT_WAKE_GRACE_MS = 5_000
+
+// Media ducks about 16 dB while the model talks. The model sends silence between replies, so its
+// level alone says when it's talking; the hold rides over pauses between sentences.
+const MEDIA_DUCKING = {
+  duckingAmount: 0.4,
+  activationThreshold: 0.05,
+  attack: 0.1,
+  hold: 1.5,
+  release: 0.6,
+}
 
 // GPT-Live only delegates work it knows can be done, and the tools live in the delegate's config,
 // so the live model is told about them; the delegate is told to call them rather than say it did.
@@ -283,11 +315,22 @@ function joinInstructions(...parts: string[]): string {
   return parts.filter((p) => p.trim() !== '').join('\n\n')
 }
 
+/** A URL for logs and error messages: without credentials, query or fragment, which can hold tokens. */
+export function redactUrl(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#]*@/i, '$1').replace(/[?#].*$/, '')
+}
+
+/** {@link redactUrl} for every http(s) URL in a message from the SDK. */
+function redactUrls(text: string): string {
+  return text.replace(/https?:\/\/[^\s'"]+/gi, redactUrl)
+}
+
 /**
  * The Switchboard graph the toolkit runs:
- * microphone → mono → [Quail speaker isolation] → OpenAI.Live → speaker.
+ * microphone → mono → [Quail speaker isolation] → OpenAI.Live → mixer → speaker.
  * The model owns turn-taking. In idle mode a VAD taps the input the model hears, only to
- * tell when the user starts talking again.
+ * tell when the user starts talking again. Media plays into the mixer, ducked under the model's
+ * voice; as part of the output, echo cancellation keeps it from the model.
  */
 function buildLiveEngine(
   transport: OpenAILiveTransport,
@@ -304,7 +347,8 @@ function buildLiveEngine(
   idleMode: boolean,
   store: boolean,
   otherAudio: { mix: boolean; ducking: OtherAudioDucking },
-  microphone: Microphone
+  microphone: Microphone,
+  mediaVolume: number
 ) {
   const nodes: object[] = [{ id: 'multiChannelToMonoNode', type: 'Switchboard.MultiChannelToMono' }]
   const chain = ['inputNode', 'multiChannelToMonoNode']
@@ -377,16 +421,28 @@ function buildLiveEngine(
         store,
       },
     },
-    { id: 'monoToMultiChannelNode', type: 'Switchboard.MonoToMultiChannel' }
+    { id: 'liveSplitterNode', type: 'Switchboard.BusSplitter' },
+    { id: 'monoToMultiChannelNode', type: 'Switchboard.MonoToMultiChannel' },
+    { id: 'mixerNode', type: 'Switchboard.Mixer', configuration: { numberOfInputs: 2 } },
+    { id: MEDIA_NODE, type: 'Switchboard.AudioPlayer' },
+    { id: MEDIA_VOLUME_NODE, type: 'Switchboard.Gain', properties: { gain: mediaVolume } },
+    { id: 'mediaDuckingNode', type: 'Switchboard.MusicDucking', properties: MEDIA_DUCKING }
   )
-  chain.push(LIVE_NODE, 'monoToMultiChannelNode', 'outputNode')
-  const connections = chain.slice(1).map((destinationNode, i) => ({
+  chain.push(LIVE_NODE, 'liveSplitterNode', 'monoToMultiChannelNode', 'mixerNode', 'outputNode')
+  const connections: object[] = chain.slice(1).map((destinationNode, i) => ({
     sourceNode: chain[i],
     destinationNode,
   }))
   if (idleMode) {
     connections.push({ sourceNode: 'vadSplitterNode', destinationNode: VAD_NODE })
   }
+  // The ducking node takes the media on bus 0 and the model's voice on bus 1.
+  connections.push(
+    { sourceNode: MEDIA_NODE, destinationNode: MEDIA_VOLUME_NODE },
+    { sourceNode: MEDIA_VOLUME_NODE, destinationNode: 'mediaDuckingNode', destinationBusIndex: 0 },
+    { sourceNode: 'liveSplitterNode', destinationNode: 'mediaDuckingNode', destinationBusIndex: 1 },
+    { sourceNode: 'mediaDuckingNode', destinationNode: 'mixerNode', destinationBusIndex: 1 }
+  )
 
   return {
     type: 'Switchboard.Realtime',
@@ -457,6 +513,7 @@ export function createOpenAILiveToolkit() {
   const listeners: Record<OpenAILiveToolkitEventType, Set<OpenAILiveToolkitEventListener>> = {
     live: new Set(),
     vad: new Set(),
+    media: new Set(),
   }
   const errorListeners = new Set<OpenAILiveErrorListener>()
   // Whether a session is currently up. Decides whether a session failure is fatal:
@@ -484,6 +541,9 @@ export function createOpenAILiveToolkit() {
   let logConversation = false
   let otherAudio: { mix: boolean; ducking: OtherAudioDucking } = { mix: false, ducking: 'min' }
   let microphone: Microphone = 'phone'
+  let mediaVolume = 1
+  // The player has a stream open, which it keeps until unloaded.
+  let mediaLoaded = false
   // The transcript turn being collected for the log.
   let turnSpeaker: 'user' | 'assistant' | null = null
   let turnText = ''
@@ -733,7 +793,8 @@ export function createOpenAILiveToolkit() {
           idleTimeoutMs > 0,
           idleTimeoutMs > 0 || continueConversation,
           otherAudio,
-          microphone
+          microphone,
+          mediaVolume
         )
       )
       id = res.result as string
@@ -984,6 +1045,80 @@ export function createOpenAILiveToolkit() {
   }
 
   /**
+   * Play an MP3 or AAC stream or file from an http(s) URL, such as internet radio, alongside the
+   * conversation, replacing what was playing. It ducks while the model talks, and echo cancellation
+   * keeps it from the model. Needs a running engine; {@link stop} stops it. Progress, what's playing
+   * and failures arrive as `'media'` events.
+   * @throws {OpenAILiveError} `MEDIA_FAILED` if the engine isn't running or the URL isn't http(s).
+   */
+  function playMedia(url: string): void {
+    if (!client || !running) {
+      throw new OpenAILiveError('MEDIA_FAILED', 'Media plays only while the engine runs.', false)
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      throw new OpenAILiveError('MEDIA_FAILED', `Not an http(s) URL: ${redactUrl(url)}`, false)
+    }
+    log(`media: play ${redactUrl(url)}`)
+    const res = client.callAction(MEDIA_NODE, 'stream', { audioFilePath: url })
+    if (res.error) {
+      throw new OpenAILiveError(
+        'MEDIA_FAILED',
+        `Could not play ${redactUrl(url)}: ${redactUrls(res.error.message ?? '')}`,
+        false
+      )
+    }
+    mediaLoaded = true
+    client.callAction(MEDIA_NODE, 'play')
+  }
+
+  /** Pause media. A live stream resumes close to live. */
+  function pauseMedia(): void {
+    log('media: pause')
+    client?.callAction(MEDIA_NODE, 'pause')
+  }
+
+  /** Resume paused media; a finished file starts over. */
+  function resumeMedia(): void {
+    log('media: resume')
+    client?.callAction(MEDIA_NODE, 'play')
+  }
+
+  /** Stop media and close its stream. */
+  function stopMedia(): void {
+    log('media: stop')
+    unloadMedia()
+  }
+
+  /** Media volume, 0 to 1, before ducking. Kept across engines. */
+  function setMediaVolume(volume: number): void {
+    mediaVolume = Math.min(1, Math.max(0, volume))
+    if (engineId) {
+      client?.setValue(MEDIA_VOLUME_NODE, 'gain', mediaVolume)
+    }
+  }
+
+  function unloadMedia(): void {
+    if (!mediaLoaded) {
+      return
+    }
+    mediaLoaded = false
+    client?.callAction(MEDIA_NODE, 'unload')
+    // The player says nothing once unloaded, so say it here.
+    emitMediaEvent('stateChanged', { state: 'idle' })
+  }
+
+  function emitMediaEvent(name: string, data: unknown): void {
+    const event: OpenAILiveToolkitEvent = {
+      type: 'media',
+      name,
+      objectURI: `${engineId}.${MEDIA_NODE}`,
+      data,
+      raw: '',
+    }
+    listeners.media.forEach((l) => l(event))
+  }
+
+  /**
    * Halt the graph. Returns the SDK's message if it refused, else null — `running`
    * only goes false when the graph actually stopped.
    */
@@ -993,6 +1128,8 @@ export function createOpenAILiveToolkit() {
       if (res.error) {
         return res.error.message ?? 'unknown error'
       }
+      // Media only plays with the engine, and a stream left open keeps downloading.
+      unloadMedia()
       // Only once the graph is down: while it runs, the communication route keeps AEC engaged.
       if (Platform.OS === 'android') {
         stopAndroidAudioSession()
@@ -1175,6 +1312,11 @@ export function createOpenAILiveToolkit() {
       listeners.vad.forEach((l) => l(event))
       return
     }
+    if (type === 'media') {
+      handleMediaEvent(event)
+      listeners.media.forEach((l) => l(event))
+      return
+    }
     switch (event.name) {
       case 'toolCall': {
         const call = event.data as ToolCall
@@ -1243,6 +1385,28 @@ export function createOpenAILiveToolkit() {
     listeners[type].forEach((l) => l(event))
   }
 
+  function handleMediaEvent(event: OpenAILiveToolkitEvent): void {
+    switch (event.name) {
+      case 'stateChanged': {
+        const state = (event.data as { state?: string } | undefined)?.state
+        log(`media: ${state}`)
+        // Known once the server answers; the app wants it with the state.
+        if (state === 'ready') {
+          event.data = { state, isLive: client?.getValue(MEDIA_NODE, 'isLive').result === true }
+        }
+        break
+      }
+      case 'metadata':
+        log(`media: now playing ${JSON.stringify(event.data ?? {})}`)
+        break
+      case 'error': {
+        const message = (event.data as { message?: string } | undefined)?.message
+        emitError('MEDIA_FAILED', message?.trim() ? redactUrls(message) : 'Media failed', false)
+        break
+      }
+    }
+  }
+
   function handleVadEvent(name: string): void {
     if (name === 'speechStarted') {
       userSpeaking = true
@@ -1273,6 +1437,11 @@ export function createOpenAILiveToolkit() {
     setMuted,
     registerTool,
     unregisterTool,
+    playMedia,
+    pauseMedia,
+    resumeMedia,
+    stopMedia,
+    setMediaVolume,
     stop,
     release,
     newConversation,

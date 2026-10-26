@@ -24,8 +24,10 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   OpenAILiveToolkitProvider,
+  useMedia,
   useOpenAILiveToolkit,
   useTool,
+  type MediaPlayback,
 } from '@synervoz/openai-live-toolkit';
 import {
   AIC_LICENSE_KEY,
@@ -49,7 +51,28 @@ const MICROPHONES = [
   { value: 'phone', label: 'Phone' },
 ] as const;
 
+// Radio played alongside the conversation: an MP3 and an HE-AAC station.
+const STATIONS = [
+  { label: 'Off', url: null },
+  { label: 'MP3', url: 'http://bigrradio.cdnstream1.com/5186_128' },
+  {
+    label: 'AAC+',
+    url: 'https://playerservices.streamtheworld.com/api/livestream-redirect/CFRBAMAAC.aac',
+  },
+] as const;
+
 type SavedConversation = { sessionId: string; savedAt: number; settings: string };
+
+function radioStatus(media: MediaPlayback): string {
+  if (media.error) {
+    return media.error.message;
+  }
+  if (media.state !== 'ready') {
+    return `${media.state}…`;
+  }
+  const { stationName, title } = media.metadata ?? {};
+  return [stationName, title].filter(Boolean).join(' — ') || 'Playing';
+}
 
 export default function App(): React.JSX.Element {
   return (
@@ -94,6 +117,7 @@ function Screen(): React.JSX.Element {
     setMuted,
     shareLogs,
   } = useOpenAILiveToolkit();
+  const media = useMedia();
 
   const [backgroundColor, setBackgroundColor] = useState(colors.bg);
   const scrollRef = useRef<ScrollView>(null);
@@ -230,6 +254,25 @@ function Screen(): React.JSX.Element {
           <Text style={styles.toggleLabel}>Mute microphone</Text>
           <Switch value={muted} onValueChange={setMuted} />
         </View>
+        {/* Media plays through the conversation's audio, so only while it runs. */}
+        {isRunning ? (
+          <>
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>Radio</Text>
+              <View style={styles.segments}>
+                {STATIONS.map(({ label, url }) => (
+                  <TouchableOpacity
+                    key={label}
+                    style={[styles.segment, media.url === url && styles.segmentActive]}
+                    onPress={() => (url ? media.play(url) : media.stop())}>
+                    <Text style={styles.segmentText}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            {media.url ? <Text style={styles.hint}>{radioStatus(media)}</Text> : null}
+          </>
+        ) : null}
       </View>
 
       <View style={[styles.section, styles.transcriptSection]}>

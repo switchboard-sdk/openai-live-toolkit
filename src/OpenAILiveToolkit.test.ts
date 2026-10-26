@@ -4,6 +4,7 @@ import { NativeModules, PermissionsAndroid, Platform, Share } from 'react-native
 import {
   createOpenAILiveToolkit,
   OpenAILiveError,
+  redactUrl,
   toolsNote,
   type OpenAILiveToolkit,
 } from './OpenAILiveToolkit'
@@ -99,11 +100,22 @@ function liveNodeConfig(): any {
   return graphNodes().find((n) => n.id === 'liveNode').configuration
 }
 
-/** The graph's connections as a chain of node ids. */
+function graphConnections(): {
+  sourceNode: string
+  destinationNode: string
+  destinationBusIndex?: number
+}[] {
+  return engineConfig().configuration.graph.connections
+}
+
+/** The graph's main chain, mic to speaker, as node ids. It comes first in the connections. */
 function graphChain(): string[] {
-  const connections: { sourceNode: string; destinationNode: string }[] =
-    engineConfig().configuration.graph.connections
-  return [connections[0]!.sourceNode, ...connections.map((c) => c.destinationNode)]
+  const connections = graphConnections()
+  const end = connections.findIndex((c) => c.destinationNode === 'outputNode')
+  return [
+    connections[0]!.sourceNode,
+    ...connections.slice(0, end + 1).map((c) => c.destinationNode),
+  ]
 }
 
 function emitEvent(objectURI: string, name: string, data?: unknown): void {
@@ -296,7 +308,9 @@ describe('graph', () => {
       'speakerIsolationNode',
       'upResamplerNode',
       'liveNode',
+      'liveSplitterNode',
       'monoToMultiChannelNode',
+      'mixerNode',
       'outputNode',
     ])
     const quail = graphNodes().find((n) => n.id === 'speakerIsolationNode')
@@ -314,7 +328,9 @@ describe('graph', () => {
       'inputNode',
       'multiChannelToMonoNode',
       'liveNode',
+      'liveSplitterNode',
       'monoToMultiChannelNode',
+      'mixerNode',
       'outputNode',
     ])
   })
@@ -939,6 +955,170 @@ describe('logs', () => {
   it('rejects when there is no log file', async () => {
     native.exportLogFile.mockReturnValue('')
     await expect(createOpenAILiveToolkit().shareLogs()).rejects.toThrow('logFile on')
+  })
+})
+
+describe('media', () => {
+  const URL = 'https://radio.example/stream'
+
+  function mediaEvents(toolkit: OpenAILiveToolkit): { name: string; data: unknown }[] {
+    const events: { name: string; data: unknown }[] = []
+    toolkit.addEventListener('media', (e) => events.push({ name: e.name, data: e.data }))
+    return events
+  }
+
+  it('plays into the mixer through a volume, ducked under the model', async () => {
+    await running()
+    const nodes = graphNodes()
+    expect(nodes.find((n) => n.id === 'mediaPlayerNode').type).toBe('Switchboard.AudioPlayer')
+    expect(nodes.find((n) => n.id === 'mediaVolumeNode')).toMatchObject({
+      type: 'Switchboard.Gain',
+      properties: { gain: 1 },
+    })
+    expect(nodes.find((n) => n.id === 'mediaDuckingNode').type).toBe('Switchboard.MusicDucking')
+    expect(nodes.find((n) => n.id === 'mixerNode').configuration).toEqual({ numberOfInputs: 2 })
+    expect(graphConnections()).toEqual(
+      expect.arrayContaining([
+        { sourceNode: 'mediaPlayerNode', destinationNode: 'mediaVolumeNode' },
+        {
+          sourceNode: 'mediaVolumeNode',
+          destinationNode: 'mediaDuckingNode',
+          destinationBusIndex: 0,
+        },
+        {
+          sourceNode: 'liveSplitterNode',
+          destinationNode: 'mediaDuckingNode',
+          destinationBusIndex: 1,
+        },
+        { sourceNode: 'mediaDuckingNode', destinationNode: 'mixerNode', destinationBusIndex: 1 },
+      ])
+    )
+  })
+
+  it('streams a URL and plays it', async () => {
+    const toolkit = await running()
+    toolkit.playMedia(URL)
+    expect(commandFor('stream').params).toEqual({
+      objectURI: 'mediaPlayerNode',
+      actionName: 'stream',
+      params: { audioFilePath: URL },
+    })
+    expect(commandFor('play').params.objectURI).toBe('mediaPlayerNode')
+  })
+
+  it('logs URLs without credentials, query or fragment', async () => {
+    expect(redactUrl('https://user:pass@radio.example/live.aac?token=abc#t=1')).toBe(
+      'https://radio.example/live.aac'
+    )
+    expect(redactUrl('http://radio.example/stream')).toBe('http://radio.example/stream')
+    const toolkit = await running({ ...CREDS, logFile: true })
+    toolkit.playMedia('https://radio.example/live.aac?token=abc')
+    expect(logged()).toContain('media: play https://radio.example/live.aac')
+    expect(logged().join('\n')).not.toContain('abc')
+  })
+
+  it('refuses before start, and anything but an http(s) URL', async () => {
+    const toolkit = initialized()
+    expect(() => toolkit.playMedia(URL)).toThrow(
+      expect.objectContaining({ code: 'MEDIA_FAILED', fatal: false })
+    )
+    await toolkit.start()
+    expect(() => toolkit.playMedia('/music/song.mp3')).toThrow(
+      expect.objectContaining({ code: 'MEDIA_FAILED' })
+    )
+    expect(commandFor('stream')).toBeUndefined()
+  })
+
+  it("throws when the player refuses the URL, and doesn't play", async () => {
+    scriptNative((req) => {
+      if (req.params?.actionName === 'createEngine') {
+        return makeRpcResponse('engine-1')
+      }
+      if (req.params?.actionName === 'stream') {
+        return makeRpcResponse(undefined, {
+          code: -1,
+          message: `Could not stream audio file: ${URL}?token=abc`,
+        })
+      }
+      return makeRpcResponse(null)
+    })
+    const toolkit = await running()
+    expect(() => toolkit.playMedia(`${URL}?token=abc`)).toThrow(
+      expect.objectContaining({
+        code: 'MEDIA_FAILED',
+        message: `Could not play ${URL}: Could not stream audio file: ${URL}`,
+      })
+    )
+    expect(commandFor('play')).toBeUndefined()
+  })
+
+  it('pauses, resumes, and stop closes the stream and says so', async () => {
+    const toolkit = await running()
+    const events = mediaEvents(toolkit)
+    toolkit.playMedia(URL)
+    toolkit.pauseMedia()
+    toolkit.resumeMedia()
+    toolkit.stopMedia()
+    expect(commandFor('pause').params.objectURI).toBe('mediaPlayerNode')
+    expect(commandsFor('play')).toHaveLength(2)
+    expect(commandFor('unload').params.objectURI).toBe('mediaPlayerNode')
+    expect(events).toEqual([{ name: 'stateChanged', data: { state: 'idle' } }])
+    toolkit.stopMedia()
+    expect(commandsFor('unload')).toHaveLength(1)
+  })
+
+  it('stopping the engine closes the stream', async () => {
+    const toolkit = await running()
+    const events = mediaEvents(toolkit)
+    toolkit.playMedia(URL)
+    toolkit.stop()
+    expect(commandFor('unload')).toBeDefined()
+    expect(events).toEqual([{ name: 'stateChanged', data: { state: 'idle' } }])
+  })
+
+  it('keeps the volume, clamped, for the engine and sets it live', async () => {
+    const toolkit = initialized()
+    toolkit.setMediaVolume(0.5)
+    await toolkit.start()
+    expect(graphNodes().find((n) => n.id === 'mediaVolumeNode').properties).toEqual({ gain: 0.5 })
+    toolkit.setMediaVolume(2)
+    expect(setValuesFor('mediaVolumeNode', 'gain').map((c) => c.params.value)).toEqual([1])
+  })
+
+  it("passes the player's events on, with isLive once ready", async () => {
+    scriptNative((req) => {
+      if (req.params?.actionName === 'createEngine') {
+        return makeRpcResponse('engine-1')
+      }
+      if (req.method === 'getValue' && req.params?.key === 'isLive') {
+        return makeRpcResponse(true)
+      }
+      return makeRpcResponse(null)
+    })
+    const toolkit = await running()
+    const events = mediaEvents(toolkit)
+    const live = jest.fn()
+    toolkit.addEventListener('live', live)
+    emitEvent('engine-1.mediaPlayerNode', 'stateChanged', { state: 'buffering' })
+    emitEvent('engine-1.mediaPlayerNode', 'stateChanged', { state: 'ready' })
+    emitEvent('engine-1.mediaPlayerNode', 'metadata', { title: 'Artist - Song' })
+    expect(events).toEqual([
+      { name: 'stateChanged', data: { state: 'buffering' } },
+      { name: 'stateChanged', data: { state: 'ready', isLive: true } },
+      { name: 'metadata', data: { title: 'Artist - Song' } },
+    ])
+    expect(live).not.toHaveBeenCalled()
+  })
+
+  it('reports a stream that fails as non-fatal', async () => {
+    const toolkit = await running()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    emitEvent('engine-1.mediaPlayerNode', 'error', {
+      message: 'The server refused https://radio.example/live?token=abc with HTTP 404',
+    })
+    expect(errors).toEqual([expect.objectContaining({ code: 'MEDIA_FAILED', fatal: false })])
+    expect(errors[0]!.message).toBe('The server refused https://radio.example/live with HTTP 404')
   })
 })
 

@@ -12,6 +12,7 @@ import { documentsPath } from './logs'
 export {
   OpenAILiveToolkitProvider,
   useOpenAILiveToolkit,
+  useMedia,
   useTool,
 } from './OpenAILiveToolkitProvider'
 export type {
@@ -20,8 +21,11 @@ export type {
   OpenAILiveToolkitConnectionStatus,
   SpeakerIsolation,
   BluetoothAudio,
+  MediaPlayback,
 } from './OpenAILiveToolkitProvider'
 export type {
+  MediaMetadata,
+  MediaState,
   Microphone,
   OpenAILiveStartOptions,
   OpenAILiveToolkitTool,

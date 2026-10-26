@@ -22,3 +22,4 @@ All notable changes to this project are documented here. The format follows [Kee
 - `webSearch`: the delegate can search the web, for weather, news and other current information.
 - `mixWithOthers` and `otherAudioDucking` (iOS): music from other apps keeps playing, lowered only while someone talks.
 - `microphone` and the hook's `bluetooth` (iOS): with a Bluetooth device connected, hear the phone's microphone with high-quality Bluetooth audio (the default), or the device's microphone in call quality. The example app shows a Microphone: Bluetooth / Phone choice while one is connected.
+- `useMedia()`: plays an MP3 or AAC stream or file from an http(s) URL, such as internet radio, mixed with the model's voice and ducked while it talks; echo cancellation keeps it from the model. The example app has a Radio choice while it runs.

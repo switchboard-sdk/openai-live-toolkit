@@ -53,8 +53,26 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `registerTool(tool)`, `unregisterTool(name)` | See [Tools](tools.md). |
 | `shareLogs()` | Opens the share sheet with the log file, about the last 2 MB. Rejects unless the provider has `logFile` on. |
+| `media` | Media playback; see `useMedia()`. |
 
 `appendInstructions`, `addContext` and `say` take up to 500 tokens each.
+
+## `useMedia()`
+
+Media playing alongside the conversation, mixed with the model's voice and ducked while it talks. See [Media](getting-started.md#media).
+
+| Field | Notes |
+| --- | --- |
+| `play(url)` | Plays an MP3 or AAC stream or file from an http(s) URL, replacing what was playing. Needs a running engine; otherwise `error` is set. |
+| `pause()`, `resume()` | A paused live stream resumes close to live; a finished file starts over. |
+| `stop()` | Stops and closes the stream. `stop()` on the engine does this too. |
+| `url` | The URL loaded, or null. |
+| `state` | `'idle' \| 'connecting' \| 'buffering' \| 'ready' \| 'finished' \| 'error'`. `'ready'` is playing audio, or ready to. |
+| `playing` | Playing, or waiting for audio to play, rather than paused or stopped. |
+| `live` | A live stream rather than a file. Known once `state` is `'ready'`. |
+| `metadata` | `{ title, stationName, genre, url }` from the stream, or null until it says. |
+| `error` | The `MEDIA_FAILED` error from the last `play`, or null. |
+| `volume`, `setVolume(volume)` | 0 to 1, before ducking. Defaults to 1. |
 
 ## `useTool(tool)`
 
@@ -76,6 +94,7 @@ Every failure is an `OpenAILiveError` with a `code`, a `message` and `fatal`. Fa
 | `SESSION_FAILED` | if no session is up | OpenAI reported an error. During a live session it's non-fatal. |
 | `TOOL_HANDLER_FAILED` | no | A handler threw; the model was told. |
 | `TOOL_RESULT_UNDELIVERED` | no | A tool result couldn't reach OpenAI. |
+| `MEDIA_FAILED` | no | Media couldn't play: the engine isn't running, the URL isn't http(s), or the stream failed. Also in `media.error`. |
 
 ## Other exports
 

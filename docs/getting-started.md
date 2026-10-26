@@ -132,10 +132,12 @@ Keep keys out of source. The example app reads them from `example/.env` with `re
 ## What runs
 
 ```
-mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → speaker
+mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → mixer → speaker
+                                                    │          ↑
+                              media player → volume → ducking ─┘
 ```
 
-Without speaker isolation the resamplers and Quail are left out: `mic → mono → OpenAI.Live → speaker`.
+Without speaker isolation the resamplers and Quail are left out: `mic → mono → OpenAI.Live → mixer → speaker`. The media player is silent until something plays ([Media](#media)).
 
 The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session. Starting again begins a new conversation, unless `continueConversation` is set (see [Continuing a conversation](#continuing-a-conversation)).
 
@@ -163,3 +165,24 @@ Set `continueConversation` on the provider to keep the conversation when a sessi
 - **Instructions and voice.** A fork keeps those of the session it continues, so after `setInstructions` or `setVoice` the next session starts fresh. Save them with a session id, and skip the resume when they've changed.
 - **Starting over.** `newConversation()` forgets the conversation and clears the transcript; a session that's up is replaced right away. After `release()` the next session starts fresh too.
 - **If it can't be continued**, for example OpenAI no longer has the stored session, a new session starts instead.
+
+## Media
+
+`useMedia()` plays an MP3 or AAC stream or file from an http(s) URL, such as internet radio, alongside the conversation:
+
+```tsx
+const media = useMedia()
+media.play('https://playerservices.streamtheworld.com/api/livestream-redirect/CFRBAMAAC.aac')
+// media.state, media.playing, media.live, media.metadata?.title, media.error
+media.pause()
+media.resume()
+media.setVolume(0.5)
+media.stop()
+```
+
+- **Part of the conversation's audio.** The player is mixed into the speaker output with the model's voice, so echo cancellation keeps it from the model, and it ducks by about 16 dB while the model talks.
+- **Only while the engine runs.** `play` before `start()` fails with `MEDIA_FAILED` in `media.error`; `stop()` stops the media and closes the stream. Idle mode leaves it playing while the session is closed.
+- **Formats.** MP3 and AAC (LC, HE-AAC, HE-AAC v2), live streams and files. Not HLS. Android plays MP3 only for now.
+- **What's playing.** Shoutcast and Icecast stations fill `metadata`: `stationName` once connected, and `title` when the song or show changes.
+- **Pausing a live stream** resumes close to live, not where it paused.
+- **Switchboard build.** Streaming isn't in an S3 build yet; use a local SDK build ([Install](#install)).
