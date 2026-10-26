@@ -18,8 +18,8 @@ import {
   type OpenAILiveTransport,
   type Microphone,
   type OtherAudioDucking,
-  type MediaMetadata,
-  type MediaState,
+  type MediaStatus,
+  type MediaToolsOptions,
 } from './OpenAILiveToolkit'
 import { DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { appendFragment, nextSessionOffset, type TranscriptEntry } from './transcript'
@@ -66,21 +66,7 @@ export interface BluetoothAudio {
  * Media playing alongside the conversation: a stream or file from an http(s) URL, ducked while the
  * model talks. Plays only while the engine runs; `stop()` stops it.
  */
-export interface MediaPlayback {
-  /** The URL loaded, or null. */
-  url: string | null
-  /** Where the player is: connecting, buffering, playing audio (`'ready'`), finished, failed. */
-  state: MediaState
-  /** Playing, or waiting for audio to play, rather than paused or stopped. */
-  playing: boolean
-  /** Whether it's a live stream, such as radio, rather than a file. Known once `state` is `'ready'`. */
-  live: boolean
-  /** What the stream says is playing, or null until it says. */
-  metadata: MediaMetadata | null
-  /** Why the last URL failed to play, or null. */
-  error: OpenAILiveError | null
-  /** 0 to 1, before ducking. */
-  volume: number
+export interface MediaPlayback extends MediaStatus {
   /** Play a URL, replacing what was playing. Fails (to `error` and `onError`) unless the engine is running. */
   play: (url: string) => void
   /** Pause. A live stream resumes close to live. */
@@ -90,20 +76,6 @@ export interface MediaPlayback {
   /** Stop and close the stream. */
   stop: () => void
   setVolume: (volume: number) => void
-}
-
-type MediaStatus = Omit<
-  MediaPlayback,
-  'play' | 'pause' | 'resume' | 'stop' | 'setVolume' | 'volume'
->
-
-const NO_MEDIA: MediaStatus = {
-  url: null,
-  state: 'idle',
-  playing: false,
-  live: false,
-  metadata: null,
-  error: null,
 }
 
 /** Value exposed by {@link useOpenAILiveToolkit}. */
@@ -298,8 +270,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   const [muted, setMutedState] = useState(false)
   const [microphone, setMicrophoneState] = useState<Microphone>(props.microphone ?? 'phone')
   const [bluetoothConnected, setBluetoothConnected] = useState(false)
-  const [mediaStatus, setMediaStatus] = useState<MediaStatus>(NO_MEDIA)
-  const [mediaVolume, setMediaVolumeState] = useState(1)
+  const [mediaStatus, setMediaStatus] = useState<MediaStatus>(toolkitRef.current.mediaStatus)
 
   const reportError = useCallback((err: OpenAILiveError) => {
     onErrorRef.current?.(err)
@@ -387,37 +358,11 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
         }
       }
     })
+    // The toolkit holds the media's state: the model's media tools change it too.
+    setMediaStatus(toolkit.mediaStatus)
     const mediaSub = toolkit.addEventListener('media', (e) => {
-      switch (e.name) {
-        case 'stateChanged': {
-          const d = e.data as { state: MediaState; isLive?: boolean }
-          if (d.state === 'idle') {
-            setMediaStatus(NO_MEDIA)
-            break
-          }
-          setMediaStatus((m) => ({
-            ...m,
-            state: d.state,
-            live: d.isLive ?? m.live,
-            playing: d.state === 'finished' || d.state === 'error' ? false : m.playing,
-          }))
-          break
-        }
-        case 'metadata':
-          setMediaStatus((m) => ({ ...m, metadata: e.data as MediaMetadata }))
-          break
-        case 'error': {
-          const message = (e.data as { message?: string } | undefined)?.message
-          setMediaStatus((m) => ({
-            ...m,
-            error: new OpenAILiveError(
-              'MEDIA_FAILED',
-              message?.trim() ? message : 'Media failed',
-              false
-            ),
-          }))
-          break
-        }
+      if (e.name === 'statusChanged') {
+        setMediaStatus(e.data as MediaStatus)
       }
     })
     return () => {
@@ -536,31 +481,16 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     (url: string) => {
       try {
         toolkitRef.current?.playMedia(url)
-        setMediaStatus({ ...NO_MEDIA, url, state: 'connecting', playing: true })
       } catch (err) {
-        const failure = asLiveError(err, 'MEDIA_FAILED')
-        reportError(failure)
-        setMediaStatus((m) => ({ ...m, error: failure }))
+        reportError(asLiveError(err, 'MEDIA_FAILED'))
       }
     },
     [reportError]
   )
-  const pauseMedia = useCallback(() => {
-    toolkitRef.current?.pauseMedia()
-    setMediaStatus((m) => ({ ...m, playing: false }))
-  }, [])
-  const resumeMedia = useCallback(() => {
-    toolkitRef.current?.resumeMedia()
-    setMediaStatus((m) => (m.url ? { ...m, playing: true } : m))
-  }, [])
-  const stopMedia = useCallback(() => {
-    toolkitRef.current?.stopMedia()
-    setMediaStatus(NO_MEDIA)
-  }, [])
-  const setMediaVolume = useCallback((next: number) => {
-    toolkitRef.current?.setMediaVolume(next)
-    setMediaVolumeState(Math.min(1, Math.max(0, next)))
-  }, [])
+  const pauseMedia = useCallback(() => toolkitRef.current?.pauseMedia(), [])
+  const resumeMedia = useCallback(() => toolkitRef.current?.resumeMedia(), [])
+  const stopMedia = useCallback(() => toolkitRef.current?.stopMedia(), [])
+  const setMediaVolume = useCallback((next: number) => toolkitRef.current?.setMediaVolume(next), [])
 
   const connectionStatus: OpenAILiveToolkitConnectionStatus =
     error?.code === 'SESSION_FAILED' ? 'error' : sessionState
@@ -600,7 +530,6 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     shareLogs,
     media: {
       ...mediaStatus,
-      volume: mediaVolume,
       play: playMedia,
       pause: pauseMedia,
       resume: resumeMedia,
@@ -626,6 +555,30 @@ export function useOpenAILiveToolkit(): OpenAILiveToolkitContextValue {
 /** Media playback alongside the conversation. Must be used within {@link OpenAILiveToolkitProvider}. */
 export function useMedia(): MediaPlayback {
   return useOpenAILiveToolkit().media
+}
+
+/**
+ * Let the model control media and know what's playing, while this component is mounted: it can
+ * play a station (or any URL, with `allowUrls`), pause, resume, change the volume and say what's
+ * playing, and the session is told when the station or song changes, as quiet context. Stations
+ * can change at runtime.
+ *
+ * @example
+ * useMediaTools({
+ *   stations: [{ name: 'Newstalk 1010', url: 'https://…/CFRBAMAAC.aac', description: 'Toronto news' }],
+ * })
+ */
+export function useMediaTools(options: MediaToolsOptions = {}): void {
+  // Throws outside the provider, like the other hooks.
+  useOpenAILiveToolkit()
+  const optionsKey = JSON.stringify({
+    stations: options.stations ?? [],
+    allowUrls: options.allowUrls ?? false,
+  })
+  useEffect(() => {
+    openAILiveToolkit.setMediaTools(JSON.parse(optionsKey))
+    return () => openAILiveToolkit.setMediaTools(null)
+  }, [optionsKey])
 }
 
 /**

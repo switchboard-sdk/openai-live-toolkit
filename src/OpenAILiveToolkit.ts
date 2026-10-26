@@ -171,8 +171,9 @@ export type Microphone = 'bluetooth' | 'phone'
 
 /**
  * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
- * (speechStarted / speechEnded) is only there in idle mode. `'media'` is the media player's:
- * stateChanged, metadata and error.
+ * (speechStarted / speechEnded) is only there in idle mode. `'media'` is the media player's
+ * stateChanged, metadata and error, and the toolkit's statusChanged with the whole
+ * {@link MediaStatus} after any change.
  */
 export type OpenAILiveToolkitEventType = 'live' | 'vad' | 'media'
 
@@ -190,6 +191,47 @@ export interface MediaMetadata {
   genre: string
   /** The station's website. */
   url: string
+}
+
+/** Where the media is, as {@link OpenAILiveToolkit.mediaStatus} and `useMedia()` show it. */
+export interface MediaStatus {
+  /** The URL loaded, or null. */
+  url: string | null
+  /** The station's name: from the media tools' stations, else what the stream says. */
+  station: string | null
+  /** Where the player is: connecting, buffering, playing audio (`'ready'`), finished, failed. */
+  state: MediaState
+  /** Playing, or waiting for audio to play, rather than paused or stopped. */
+  playing: boolean
+  /** Whether it's a live stream, such as radio, rather than a file. Known once `state` is `'ready'`. */
+  live: boolean
+  /** What the stream says is playing, or null until it says. */
+  metadata: MediaMetadata | null
+  /** Why the last URL failed to play, or null. */
+  error: OpenAILiveError | null
+  /** 0 to 1, before ducking. */
+  volume: number
+}
+
+/** A station the model can play through the media tools. */
+export interface MediaStation {
+  /** What the user calls it, e.g. "Newstalk 1010". */
+  name: string
+  /** An http(s) MP3 or AAC stream. */
+  url: string
+  /** What it plays, so the model can pick, e.g. "Toronto news and talk". */
+  description?: string
+}
+
+/** Options for {@link OpenAILiveToolkit.setMediaTools}. */
+export interface MediaToolsOptions {
+  /** Stations the model can play by name. */
+  stations?: MediaStation[]
+  /**
+   * Let the model play any public http(s) URL, such as one the user reads out or one it found.
+   * Off by default: the model then plays only {@link stations}.
+   */
+  allowUrls?: boolean
 }
 
 /** A classified Switchboard event. */
@@ -285,6 +327,17 @@ const MEDIA_DUCKING = {
   release: 0.6,
 }
 
+// How long the play tool waits for a stream to start before answering anyway.
+const MEDIA_START_TIMEOUT_MS = 8_000
+
+const MEDIA_TOOL_NAMES = [
+  'play_media',
+  'pause_media',
+  'resume_media',
+  'set_media_volume',
+  'get_now_playing',
+] as const
+
 // GPT-Live only delegates work it knows can be done, and the tools live in the delegate's config,
 // so the live model is told about them; the delegate is told to call them rather than say it did.
 const DELEGATE_INSTRUCTIONS =
@@ -323,6 +376,60 @@ export function redactUrl(url: string): string {
 /** {@link redactUrl} for every http(s) URL in a message from the SDK. */
 function redactUrls(text: string): string {
   return text.replace(/https?:\/\/[^\s'"]+/gi, redactUrl)
+}
+
+const MAX_STREAM_TEXT = 100
+
+/**
+ * Text from a stream (a title or station name), which whoever runs the station controls: one line,
+ * capped, without double quotes, for the model to be told as quoted data.
+ */
+export function streamText(text: string): string {
+  const line = text
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/["“”„«»]/g, "'")
+    .trim()
+  return line.length > MAX_STREAM_TEXT ? `${line.slice(0, MAX_STREAM_TEXT)}…` : line
+}
+
+/**
+ * Whether a URL points at the device itself or a local network, which the model mustn't reach. Only
+ * the URL is checked: a name that resolves to a local address, or a redirect to one, gets through.
+ */
+export function isLocalUrl(url: string): boolean {
+  const authority = url.match(/^[a-z]+:\/\/([^/?#]*)/i)?.[1]
+  // Credentials, IPv6 literals and backslashes have no place in a stream URL, and parse differently
+  // from one parser to the next.
+  if (authority === undefined || /[@[\]\\]/.test(authority) || url.includes('\\')) {
+    return true
+  }
+  const host = authority.replace(/:\d*$/, '').toLowerCase().replace(/\.$/, '')
+  // Single-label names like "router" only resolve on a local network.
+  if (!host.includes('.') || host.endsWith('.local') || host.endsWith('.localhost')) {
+    return true
+  }
+  const labels = host.split('.')
+  if (!labels.every((label) => /^(0x[0-9a-f]*|\d+)$/.test(label))) {
+    return false
+  }
+  // A numeric host: resolvers also take short, octal and hex forms like 127.1, so only a plain
+  // dotted quad is let through, and only outside the local ranges.
+  const quad = labels.length === 4 && labels.every((l) => /^(0|[1-9]\d{0,2})$/.test(l) && +l < 256)
+  if (!quad) {
+    return true
+  }
+  const [a, b] = labels.map(Number) as [number, number]
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  )
 }
 
 /**
@@ -541,9 +648,24 @@ export function createOpenAILiveToolkit() {
   let logConversation = false
   let otherAudio: { mix: boolean; ducking: OtherAudioDucking } = { mix: false, ducking: 'min' }
   let microphone: Microphone = 'phone'
-  let mediaVolume = 1
-  // The player has a stream open, which it keeps until unloaded.
-  let mediaLoaded = false
+  const NO_MEDIA: Omit<MediaStatus, 'volume'> = {
+    url: null,
+    station: null,
+    state: 'idle',
+    playing: false,
+    live: false,
+    metadata: null,
+    error: null,
+  }
+  let media: MediaStatus = { ...NO_MEDIA, volume: 1 }
+  // Called on every media change, to settle waitForMediaToStart.
+  const mediaWaiters = new Set<() => void>()
+  // Media tools are on: the model can control media and is told what's playing.
+  let mediaToolsOn = false
+  let mediaStations: MediaStation[] = []
+  let mediaAllowUrls = false
+  // What the current session was last told is playing.
+  let sessionNowPlaying = ''
   // The transcript turn being collected for the log.
   let turnSpeaker: 'user' | 'assistant' | null = null
   let turnText = ''
@@ -794,7 +916,7 @@ export function createOpenAILiveToolkit() {
           idleTimeoutMs > 0 || continueConversation,
           otherAudio,
           microphone,
-          mediaVolume
+          media.volume
         )
       )
       id = res.result as string
@@ -967,15 +1089,18 @@ export function createOpenAILiveToolkit() {
    */
   function registerTool(tool: OpenAILiveToolkitTool): void {
     tools.set(tool.name, tool)
-    if (engineId) {
-      client?.setValue(LIVE_NODE, 'tools', delegateTools())
-      syncToolsNote()
-    }
+    toolsChanged()
   }
 
   /** Remove a registered tool by name; no-op if it isn't registered. */
   function unregisterTool(name: string): void {
-    if (tools.delete(name) && engineId) {
+    if (tools.delete(name)) {
+      toolsChanged()
+    }
+  }
+
+  function toolsChanged(): void {
+    if (engineId) {
       client?.setValue(LIVE_NODE, 'tools', delegateTools())
       syncToolsNote()
     }
@@ -1047,40 +1172,49 @@ export function createOpenAILiveToolkit() {
   /**
    * Play an MP3 or AAC stream or file from an http(s) URL, such as internet radio, alongside the
    * conversation, replacing what was playing. It ducks while the model talks, and echo cancellation
-   * keeps it from the model. Needs a running engine; {@link stop} stops it. Progress, what's playing
-   * and failures arrive as `'media'` events.
+   * keeps it from the model. Needs a running engine; {@link stop} stops it. Changes arrive as
+   * `'media'` events and in {@link mediaStatus}.
    * @throws {OpenAILiveError} `MEDIA_FAILED` if the engine isn't running or the URL isn't http(s).
    */
   function playMedia(url: string): void {
+    const refuse = (message: string): never => {
+      const error = new OpenAILiveError('MEDIA_FAILED', message, false)
+      setMedia({ error })
+      throw error
+    }
     if (!client || !running) {
-      throw new OpenAILiveError('MEDIA_FAILED', 'Media plays only while the engine runs.', false)
+      return refuse('Media plays only while the engine runs.')
     }
     if (!/^https?:\/\//i.test(url)) {
-      throw new OpenAILiveError('MEDIA_FAILED', `Not an http(s) URL: ${redactUrl(url)}`, false)
+      return refuse(`Not an http(s) URL: ${redactUrl(url)}`)
     }
     log(`media: play ${redactUrl(url)}`)
     const res = client.callAction(MEDIA_NODE, 'stream', { audioFilePath: url })
     if (res.error) {
-      throw new OpenAILiveError(
-        'MEDIA_FAILED',
-        `Could not play ${redactUrl(url)}: ${redactUrls(res.error.message ?? '')}`,
-        false
-      )
+      return refuse(`Could not play ${redactUrl(url)}: ${redactUrls(res.error.message ?? '')}`)
     }
-    mediaLoaded = true
     client.callAction(MEDIA_NODE, 'play')
+    setMedia({ ...NO_MEDIA, url, state: 'connecting', playing: true })
   }
 
   /** Pause media. A live stream resumes close to live. */
   function pauseMedia(): void {
+    if (!media.url) {
+      return
+    }
     log('media: pause')
     client?.callAction(MEDIA_NODE, 'pause')
+    setMedia({ playing: false })
   }
 
   /** Resume paused media; a finished file starts over. */
   function resumeMedia(): void {
+    if (!media.url) {
+      return
+    }
     log('media: resume')
     client?.callAction(MEDIA_NODE, 'play')
+    setMedia({ playing: true })
   }
 
   /** Stop media and close its stream. */
@@ -1091,20 +1225,31 @@ export function createOpenAILiveToolkit() {
 
   /** Media volume, 0 to 1, before ducking. Kept across engines. */
   function setMediaVolume(volume: number): void {
-    mediaVolume = Math.min(1, Math.max(0, volume))
+    const next = Math.min(1, Math.max(0, volume))
     if (engineId) {
-      client?.setValue(MEDIA_VOLUME_NODE, 'gain', mediaVolume)
+      client?.setValue(MEDIA_VOLUME_NODE, 'gain', next)
     }
+    setMedia({ volume: next })
   }
 
   function unloadMedia(): void {
-    if (!mediaLoaded) {
+    if (!media.url) {
       return
     }
-    mediaLoaded = false
     client?.callAction(MEDIA_NODE, 'unload')
-    // The player says nothing once unloaded, so say it here.
-    emitMediaEvent('stateChanged', { state: 'idle' })
+    setMedia(NO_MEDIA)
+  }
+
+  function setMedia(change: Partial<MediaStatus>): void {
+    const next = { ...media, ...change }
+    next.station = next.url
+      ? (mediaStations.find((st) => st.url === next.url)?.name ??
+        (next.metadata?.stationName || null))
+      : null
+    media = next
+    emitMediaEvent('statusChanged', media)
+    mediaWaiters.forEach((w) => w())
+    syncNowPlaying()
   }
 
   function emitMediaEvent(name: string, data: unknown): void {
@@ -1116,6 +1261,226 @@ export function createOpenAILiveToolkit() {
       raw: '',
     }
     listeners.media.forEach((l) => l(event))
+  }
+
+  /** Resolves once the media has started or failed, or after timeoutMs with it still on its way. */
+  function waitForMediaToStart(timeoutMs: number): Promise<MediaStatus> {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer)
+        mediaWaiters.delete(check)
+        resolve(media)
+      }
+      const check = () => {
+        // The player says it failed a moment before it says why.
+        const pending =
+          media.state === 'connecting' ||
+          media.state === 'buffering' ||
+          (media.state === 'error' && !media.error)
+        if (!pending) {
+          done()
+        }
+      }
+      const timer = setTimeout(done, timeoutMs)
+      mediaWaiters.add(check)
+      check()
+    })
+  }
+
+  /**
+   * Let the model control media and know what's playing: registers the media tools (play a
+   * station or URL, pause, resume, volume, what's playing) and keeps the session told what's
+   * playing, as quiet context. `null` turns them off.
+   */
+  function setMediaTools(options: MediaToolsOptions | null): void {
+    mediaToolsOn = options !== null
+    mediaStations = options?.stations ?? []
+    mediaAllowUrls = options?.allowUrls ?? false
+    MEDIA_TOOL_NAMES.forEach((name) => tools.delete(name))
+    if (mediaToolsOn) {
+      mediaTools().forEach((t) => tools.set(t.name, t))
+    }
+    toolsChanged()
+    syncNowPlaying()
+  }
+
+  function mediaTools(): OpenAILiveToolkitTool[] {
+    const names = mediaStations.map((st) => st.name)
+    const stationList = mediaStations
+      .map((st) => (st.description ? `${st.name} (${st.description})` : st.name))
+      .join('; ')
+    const play: OpenAILiveToolkitTool = {
+      name: 'play_media',
+      description:
+        'Play a radio station or audio stream, replacing what is playing. ' +
+        (names.length > 0
+          ? `Stations: ${stationList}. With no station${mediaAllowUrls ? ' or URL' : ''}, plays a different station from the one playing, for "play something else".`
+          : 'Needs a stream URL.'),
+      parameters: {
+        type: 'object',
+        properties: {
+          ...(names.length > 0
+            ? { station: { type: 'string', enum: names, description: 'The station to play.' } }
+            : {}),
+          ...(mediaAllowUrls
+            ? {
+                url: {
+                  type: 'string',
+                  description: 'An http(s) MP3 or AAC stream URL, when the user gives one.',
+                },
+              }
+            : {}),
+        },
+        additionalProperties: false,
+      },
+      handler: async ({ station, url }: { station?: string; url?: string }) => {
+        if (url && !mediaAllowUrls) {
+          return { error: 'Only the listed stations can be played.' }
+        }
+        if (url && isLocalUrl(url)) {
+          return { error: "URLs on the device or a local network can't be played." }
+        }
+        const target = url ? { url } : pickStation(station)
+        if (!target) {
+          return {
+            error: station ? `There's no station called ${station}.` : 'There is no other station.',
+          }
+        }
+        playMedia(target.url)
+        const status = await waitForMediaToStart(MEDIA_START_TIMEOUT_MS)
+        if (status.state === 'error') {
+          return { error: streamText(status.error?.message ?? "It couldn't be played.") }
+        }
+        return {
+          playing: stationForModel() ?? redactUrl(target.url),
+          ...(status.metadata?.title ? { title: streamText(status.metadata.title) } : {}),
+          ...(status.state === 'ready' ? {} : { note: 'Still connecting.' }),
+        }
+      },
+    }
+    return [
+      // Nothing to play without stations or URLs.
+      ...(names.length > 0 || mediaAllowUrls ? [play] : []),
+      {
+        name: 'pause_media',
+        description: 'Pause the music or radio that is playing.',
+        handler: () => {
+          if (!media.url || !media.playing) {
+            return { error: 'Nothing is playing.' }
+          }
+          pauseMedia()
+          return { paused: stationForModel() }
+        },
+      },
+      {
+        name: 'resume_media',
+        description: 'Resume the music or radio after a pause.',
+        handler: () => {
+          if (!media.url) {
+            return { error: 'Nothing is paused; play a station instead.' }
+          }
+          resumeMedia()
+          return { playing: stationForModel() }
+        },
+      },
+      {
+        name: 'set_media_volume',
+        description:
+          'Set how loud the music or radio plays. Give volume for an exact level, or change for ' +
+          'louder or quieter.',
+        parameters: {
+          type: 'object',
+          properties: {
+            volume: { type: 'number', minimum: 0, maximum: 100, description: 'Volume in percent.' },
+            change: {
+              type: 'number',
+              description: 'Percentage points to add; negative is quieter. About 20 for "a bit".',
+            },
+          },
+          additionalProperties: false,
+        },
+        handler: ({ volume, change }: { volume?: number; change?: number }) => {
+          const percent = volume ?? Math.round(media.volume * 100) + (change ?? 0)
+          setMediaVolume(percent / 100)
+          return { volume: Math.round(media.volume * 100) }
+        },
+      },
+      {
+        name: 'get_now_playing',
+        description:
+          "What's playing: the station, the song or show, whether it's paused, and the volume.",
+        handler: () => ({
+          state: !media.url
+            ? 'stopped'
+            : media.state === 'error'
+              ? 'failed'
+              : media.playing
+                ? 'playing'
+                : 'paused',
+          station: stationForModel(),
+          title: media.metadata?.title ? streamText(media.metadata.title) : null,
+          volume: Math.round(media.volume * 100),
+        }),
+      },
+    ]
+  }
+
+  /** The station called `name`, or with no name, the next one after what's playing. */
+  function pickStation(name?: string): MediaStation | undefined {
+    if (name) {
+      return mediaStations.find((st) => st.name.toLowerCase() === name.toLowerCase())
+    }
+    const others = mediaStations.filter((st) => st.url !== media.url)
+    const current = mediaStations.findIndex((st) => st.url === media.url)
+    return mediaStations.slice(current + 1).find((st) => st.url !== media.url) ?? others[0]
+  }
+
+  /** What the model is told is playing. */
+  /** The station as the model is told it: the app's name for it, or the stream's, quoted. */
+  function stationForModel(): string | null {
+    if (!media.station) {
+      return null
+    }
+    return mediaStations.some((st) => st.url === media.url)
+      ? media.station
+      : `"${streamText(media.station)}"`
+  }
+
+  function nowPlayingNote(): string {
+    const station = stationForModel() ?? 'A stream'
+    const title = media.metadata?.title ? `"${streamText(media.metadata.title)}"` : ''
+    if (!media.url) {
+      return 'The music stopped; nothing is playing.'
+    }
+    if (media.state === 'error') {
+      return `Nothing is playing: ${station} couldn't be played.`
+    }
+    if (media.state === 'finished') {
+      return `${station} finished playing.`
+    }
+    if (!media.playing) {
+      return `${station} is paused.`
+    }
+    return title ? `Now playing on ${station}: ${title}.` : `Now playing: ${station}.`
+  }
+
+  /** Tell the session what's playing when that changed, as context it won't say on its own. */
+  function syncNowPlaying(): void {
+    if (!mediaToolsOn || !sessionLive) {
+      return
+    }
+    // Wait to say it plays until it does, or fails.
+    if (media.playing && (media.state === 'connecting' || media.state === 'buffering')) {
+      return
+    }
+    const note = nowPlayingNote()
+    // A session that was never told something plays doesn't need to hear that nothing does.
+    if (note === sessionNowPlaying || (sessionNowPlaying === '' && !media.url)) {
+      return
+    }
+    if (!client?.callAction(LIVE_NODE, 'appendThinking', { text: note }).error) {
+      sessionNowPlaying = note
+    }
   }
 
   /**
@@ -1338,9 +1703,11 @@ export function createOpenAILiveToolkit() {
         // the session it continues was told. Either way, bring its tools note up to date.
         if (!forking) {
           sessionToolsNote = lastWrittenToolsNote
+          sessionNowPlaying = ''
         }
         forking = false
         syncToolsNote()
+        syncNowPlaying()
         touch()
         break
       // An "mm" from a noise restarts the countdown but doesn't show the model was talked to.
@@ -1388,20 +1755,31 @@ export function createOpenAILiveToolkit() {
   function handleMediaEvent(event: OpenAILiveToolkitEvent): void {
     switch (event.name) {
       case 'stateChanged': {
-        const state = (event.data as { state?: string } | undefined)?.state
+        const state = (event.data as { state: MediaState }).state
         log(`media: ${state}`)
-        // Known once the server answers; the app wants it with the state.
-        if (state === 'ready') {
-          event.data = { state, isLive: client?.getValue(MEDIA_NODE, 'isLive').result === true }
-        }
+        setMedia({
+          state,
+          // Known once the server answers.
+          ...(state === 'ready'
+            ? { live: client?.getValue(MEDIA_NODE, 'isLive').result === true }
+            : {}),
+          ...(state === 'finished' || state === 'error' ? { playing: false } : {}),
+        })
         break
       }
       case 'metadata':
         log(`media: now playing ${JSON.stringify(event.data ?? {})}`)
+        setMedia({ metadata: event.data as MediaMetadata })
         break
       case 'error': {
         const message = (event.data as { message?: string } | undefined)?.message
-        emitError('MEDIA_FAILED', message?.trim() ? redactUrls(message) : 'Media failed', false)
+        const error = new OpenAILiveError(
+          'MEDIA_FAILED',
+          message?.trim() ? redactUrls(message) : 'Media failed',
+          false
+        )
+        setMedia({ error })
+        emitError(error.code, error.message, false)
         break
       }
     }
@@ -1442,6 +1820,7 @@ export function createOpenAILiveToolkit() {
     resumeMedia,
     stopMedia,
     setMediaVolume,
+    setMediaTools,
     stop,
     release,
     newConversation,
@@ -1449,6 +1828,10 @@ export function createOpenAILiveToolkit() {
     /** Whether the engine is started (between {@link start} and {@link stop}). */
     get isRunning(): boolean {
       return running
+    },
+    /** Where the media is. */
+    get mediaStatus(): MediaStatus {
+      return media
     },
     /** Whether idle mode closed the session; it reopens when the user speaks. */
     get isIdle(): boolean {

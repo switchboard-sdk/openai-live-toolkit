@@ -67,12 +67,26 @@ Media playing alongside the conversation, mixed with the model's voice and ducke
 | `pause()`, `resume()` | A paused live stream resumes close to live; a finished file starts over. |
 | `stop()` | Stops and closes the stream. `stop()` on the engine does this too. |
 | `url` | The URL loaded, or null. |
+| `station` | The station's name: from `useMediaTools` stations, else what the stream says. |
 | `state` | `'idle' \| 'connecting' \| 'buffering' \| 'ready' \| 'finished' \| 'error'`. `'ready'` is playing audio, or ready to. |
 | `playing` | Playing, or waiting for audio to play, rather than paused or stopped. |
 | `live` | A live stream rather than a file. Known once `state` is `'ready'`. |
 | `metadata` | `{ title, stationName, genre, url }` from the stream, or null until it says. |
 | `error` | The `MEDIA_FAILED` error from the last `play`, or null. |
 | `volume`, `setVolume(volume)` | 0 to 1, before ducking. Defaults to 1. |
+
+The model's media tools change this too.
+
+## `useMediaTools(options?)`
+
+Lets the model control media and know what's playing while the component is mounted. See [Letting the model control media](getting-started.md#letting-the-model-control-media).
+
+| Option | Notes |
+| --- | --- |
+| `stations` | `MediaStation[]`: `{ name, url, description? }`. The model plays them by name. Can change at runtime. |
+| `allowUrls` | `false`. Lets the model play any public http(s) URL too, not only `stations`. URLs on the device or a local network are always refused. |
+
+Registers `play_media`, `pause_media`, `resume_media`, `set_media_volume` and `get_now_playing`, and tells the session what's playing as quiet context.
 
 ## `useTool(tool)`
 

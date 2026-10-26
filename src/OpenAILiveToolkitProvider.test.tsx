@@ -47,6 +47,17 @@ jest.mock('./OpenAILiveToolkit', () => {
     resumeMedia: jest.fn(),
     stopMedia: jest.fn(),
     setMediaVolume: jest.fn(),
+    setMediaTools: jest.fn(),
+    mediaStatus: {
+      url: null,
+      station: null,
+      state: 'idle',
+      playing: false,
+      live: false,
+      metadata: null,
+      error: null,
+      volume: 1,
+    },
     addEventListener: jest.fn((type: string, listener: (e: any) => void) => {
       eventListeners[type] = listener
       return { remove: jest.fn(() => (eventListeners[type] = null)) }
@@ -73,6 +84,7 @@ jest.mock('./OpenAILiveToolkit', () => {
 import {
   OpenAILiveToolkitProvider,
   useMedia,
+  useMediaTools,
   useOpenAILiveToolkit,
 } from './OpenAILiveToolkitProvider'
 import { OpenAILiveError } from './OpenAILiveToolkit'
@@ -388,63 +400,41 @@ describe('setters delegate and stay reactive', () => {
 
 describe('media', () => {
   const URL = 'https://radio.example/stream'
+  const PLAYING = {
+    url: URL,
+    station: 'Test Radio',
+    state: 'ready',
+    playing: true,
+    live: true,
+    metadata: { title: 'Artist - Song', stationName: 'Test Radio', genre: '', url: '' },
+    error: null,
+    volume: 0.5,
+  }
 
-  it('plays, follows the player and stops', () => {
+  it("mirrors the toolkit's media status", () => {
+    const { result } = renderProvider()
+    expect(result.current.media).toMatchObject({ url: null, state: 'idle', volume: 1 })
+    emitMedia('stateChanged', { state: 'ready' })
+    expect(result.current.media.state).toBe('idle')
+    emitMedia('statusChanged', PLAYING)
+    expect(result.current.media).toMatchObject(PLAYING)
+  })
+
+  it('passes the controls through', () => {
     const { result } = renderProvider()
     act(() => result.current.media.play(URL))
-    expect(toolkit.playMedia).toHaveBeenCalledWith(URL)
-    expect(result.current.media).toMatchObject({ url: URL, state: 'connecting', playing: true })
-    emitMedia('stateChanged', { state: 'buffering' })
-    emitMedia('stateChanged', { state: 'ready', isLive: true })
-    emitMedia('metadata', { title: 'Artist - Song', stationName: 'Test Radio', genre: '', url: '' })
-    expect(result.current.media).toMatchObject({
-      state: 'ready',
-      live: true,
-      playing: true,
-      metadata: { title: 'Artist - Song', stationName: 'Test Radio' },
-    })
     act(() => result.current.media.pause())
-    expect(toolkit.pauseMedia).toHaveBeenCalled()
-    expect(result.current.media.playing).toBe(false)
     act(() => result.current.media.resume())
-    expect(toolkit.resumeMedia).toHaveBeenCalled()
-    expect(result.current.media.playing).toBe(true)
+    act(() => result.current.media.setVolume(0.3))
     act(() => result.current.media.stop())
+    expect(toolkit.playMedia).toHaveBeenCalledWith(URL)
+    expect(toolkit.pauseMedia).toHaveBeenCalled()
+    expect(toolkit.resumeMedia).toHaveBeenCalled()
+    expect(toolkit.setMediaVolume).toHaveBeenCalledWith(0.3)
     expect(toolkit.stopMedia).toHaveBeenCalled()
-    expect(result.current.media).toMatchObject({
-      url: null,
-      state: 'idle',
-      playing: false,
-      metadata: null,
-    })
   })
 
-  it('resets when the toolkit unloads it, as on stop', () => {
-    const { result } = renderProvider()
-    act(() => result.current.media.play(URL))
-    emitMedia('stateChanged', { state: 'idle' })
-    expect(result.current.media).toMatchObject({ url: null, state: 'idle', playing: false })
-  })
-
-  it('a file played to its end is no longer playing', () => {
-    const { result } = renderProvider()
-    act(() => result.current.media.play(URL))
-    emitMedia('stateChanged', { state: 'ready', isLive: false })
-    emitMedia('stateChanged', { state: 'finished' })
-    expect(result.current.media).toMatchObject({ url: URL, state: 'finished', playing: false })
-  })
-
-  it('a stream failure stops playing and keeps the reason in media.error', () => {
-    const { result } = renderProvider()
-    act(() => result.current.media.play(URL))
-    emitMedia('stateChanged', { state: 'error' })
-    emitMedia('error', { message: 'HTTP 404' })
-    expect(result.current.media).toMatchObject({ state: 'error', playing: false })
-    expect(result.current.media.error).toMatchObject({ code: 'MEDIA_FAILED', message: 'HTTP 404' })
-    expect(result.current.error).toBeNull()
-  })
-
-  it('a refused play lands in media.error and onError, not error', () => {
+  it('a refused play goes to onError, not error', () => {
     const refusal = new OpenAILiveError(
       'MEDIA_FAILED',
       'Media plays only while the engine runs.',
@@ -456,19 +446,8 @@ describe('media', () => {
     const onError = jest.fn()
     const { result } = renderProvider({ onError })
     act(() => result.current.media.play(URL))
-    expect(result.current.media).toMatchObject({ url: null, state: 'idle', error: refusal })
     expect(result.current.error).toBeNull()
     expect(onError).toHaveBeenCalledWith(refusal)
-  })
-
-  it('volume is clamped and passed through', () => {
-    const { result } = renderProvider()
-    expect(result.current.media.volume).toBe(1)
-    act(() => result.current.media.setVolume(0.3))
-    expect(toolkit.setMediaVolume).toHaveBeenCalledWith(0.3)
-    expect(result.current.media.volume).toBe(0.3)
-    act(() => result.current.media.setVolume(-1))
-    expect(result.current.media.volume).toBe(0)
   })
 
   it('useMedia gives the same media as useOpenAILiveToolkit', () => {
@@ -476,7 +455,57 @@ describe('media', () => {
       <OpenAILiveToolkitProvider {...CREDS}>{children}</OpenAILiveToolkitProvider>
     )
     const { result } = renderHook(() => useMedia(), { wrapper })
-    act(() => result.current.play(URL))
-    expect(result.current).toMatchObject({ url: URL, state: 'connecting' })
+    emitMedia('statusChanged', PLAYING)
+    expect(result.current).toMatchObject(PLAYING)
+  })
+})
+
+describe('useMediaTools', () => {
+  const STATIONS = [{ name: 'Big R Radio', url: 'http://big.example/r' }]
+
+  function renderMediaTools(stations?: typeof STATIONS) {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <OpenAILiveToolkitProvider {...CREDS}>{children}</OpenAILiveToolkitProvider>
+    )
+    return renderHook(
+      ({ list }: { list?: typeof STATIONS }) =>
+        useMediaTools(list ? { stations: list } : undefined),
+      { wrapper, initialProps: { list: stations } }
+    )
+  }
+
+  it('turns the media tools on with the stations, and off on unmount', () => {
+    const { unmount } = renderMediaTools(STATIONS)
+    expect(toolkit.setMediaTools).toHaveBeenLastCalledWith({ stations: STATIONS, allowUrls: false })
+    unmount()
+    expect(toolkit.setMediaTools).toHaveBeenLastCalledWith(null)
+  })
+
+  it('updates when the stations change, not on every render', () => {
+    const { rerender } = renderMediaTools(STATIONS)
+    rerender({ list: [...STATIONS] })
+    expect(toolkit.setMediaTools).toHaveBeenCalledTimes(1)
+    const more = [...STATIONS, { name: 'Newstalk 1010', url: 'https://news.example/1010.aac' }]
+    rerender({ list: more })
+    expect(toolkit.setMediaTools).toHaveBeenLastCalledWith({ stations: more, allowUrls: false })
+  })
+
+  it('works without stations', () => {
+    renderMediaTools()
+    expect(toolkit.setMediaTools).toHaveBeenLastCalledWith({ stations: [], allowUrls: false })
+  })
+
+  it('passes allowUrls on', () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <OpenAILiveToolkitProvider {...CREDS}>{children}</OpenAILiveToolkitProvider>
+    )
+    renderHook(() => useMediaTools({ allowUrls: true }), { wrapper })
+    expect(toolkit.setMediaTools).toHaveBeenLastCalledWith({ stations: [], allowUrls: true })
+  })
+
+  it('throws outside the provider', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => renderHook(() => useMediaTools())).toThrow(/OpenAILiveToolkitProvider/)
+    consoleError.mockRestore()
   })
 })

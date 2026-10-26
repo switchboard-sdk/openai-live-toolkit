@@ -13,6 +13,7 @@ export {
   OpenAILiveToolkitProvider,
   useOpenAILiveToolkit,
   useMedia,
+  useMediaTools,
   useTool,
 } from './OpenAILiveToolkitProvider'
 export type {
@@ -26,6 +27,9 @@ export type {
 export type {
   MediaMetadata,
   MediaState,
+  MediaStation,
+  MediaStatus,
+  MediaToolsOptions,
   Microphone,
   OpenAILiveStartOptions,
   OpenAILiveToolkitTool,

@@ -25,6 +25,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   OpenAILiveToolkitProvider,
   useMedia,
+  useMediaTools,
   useOpenAILiveToolkit,
   useTool,
   type MediaPlayback,
@@ -51,15 +52,28 @@ const MICROPHONES = [
   { value: 'phone', label: 'Phone' },
 ] as const;
 
-// Radio played alongside the conversation: an MP3 and an HE-AAC station.
+// Radio played alongside the conversation, which the model can also play, pause and talk about:
+// two MP3 stations and an HE-AAC one.
 const STATIONS = [
-  { label: 'Off', url: null },
-  { label: 'MP3', url: 'http://bigrradio.cdnstream1.com/5186_128' },
   {
-    label: 'AAC+',
-    url: 'https://playerservices.streamtheworld.com/api/livestream-redirect/CFRBAMAAC.aac',
+    name: 'BigR 80s Metal',
+    label: 'Metal',
+    url: 'http://bigrradio.cdnstream1.com/5186_128',
+    description: '80s metal',
   },
-] as const;
+  {
+    name: '0N Classic Rock',
+    label: 'Rock',
+    url: 'https://0n-classicrock.radionetz.de/0n-classicrock.mp3',
+    description: 'classic rock hits',
+  },
+  {
+    name: 'Newstalk 1010',
+    label: 'News',
+    url: 'https://playerservices.streamtheworld.com/api/livestream-redirect/CFRBAMAAC.aac',
+    description: 'Toronto news and talk',
+  },
+];
 
 type SavedConversation = { sessionId: string; savedAt: number; settings: string };
 
@@ -70,8 +84,8 @@ function radioStatus(media: MediaPlayback): string {
   if (media.state !== 'ready') {
     return `${media.state}…`;
   }
-  const { stationName, title } = media.metadata ?? {};
-  return [stationName, title].filter(Boolean).join(' — ') || 'Playing';
+  const status = [media.station, media.metadata?.title].filter(Boolean).join(' — ') || 'Playing';
+  return media.playing ? status : `${status} (paused)`;
 }
 
 export default function App(): React.JSX.Element {
@@ -118,6 +132,7 @@ function Screen(): React.JSX.Element {
     shareLogs,
   } = useOpenAILiveToolkit();
   const media = useMedia();
+  useMediaTools({ stations: STATIONS });
 
   const [backgroundColor, setBackgroundColor] = useState(colors.bg);
   const scrollRef = useRef<ScrollView>(null);
@@ -260,7 +275,7 @@ function Screen(): React.JSX.Element {
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>Radio</Text>
               <View style={styles.segments}>
-                {STATIONS.map(({ label, url }) => (
+                {[{ label: 'Off', url: null }, ...STATIONS].map(({ label, url }) => (
                   <TouchableOpacity
                     key={label}
                     style={[styles.segment, media.url === url && styles.segmentActive]}
@@ -297,7 +312,7 @@ function Screen(): React.JSX.Element {
                 ? 'Start continues your last conversation.'
                 : resumed
                   ? 'Continuing your last conversation.'
-                  : 'Talk over it, ask it to change the background color, ask the time, or ask about the weather.'}
+                  : 'Talk over it, ask it to change the background color, ask the time, ask about the weather, or ask it to play some music.'}
             </Text>
           ) : (
             transcript.map((entry) => (

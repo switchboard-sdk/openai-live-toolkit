@@ -186,3 +186,21 @@ media.stop()
 - **What's playing.** Shoutcast and Icecast stations fill `metadata`: `stationName` once connected, and `title` when the song or show changes.
 - **Pausing a live stream** resumes close to live, not where it paused.
 - **Switchboard build.** Streaming isn't in an S3 build yet; use a local SDK build ([Install](#install)).
+
+### Letting the model control media
+
+`useMediaTools()` gives the model media tools and tells it what's playing, while the component that calls it is mounted:
+
+```tsx
+useMediaTools({
+  stations: [
+    { name: 'Newstalk 1010', url: 'https://…/CFRBAMAAC.aac', description: 'Toronto news and talk' },
+    { name: '0N Classic Rock', url: 'https://…/0n-classicrock.mp3', description: 'classic rock hits' },
+  ],
+})
+```
+
+- **Tools.** `play_media` plays a station by name; with none it plays the next station, for "play something else". With `allowUrls: true` it also plays any public http(s) URL the model is given. `pause_media`, `resume_media`, `set_media_volume` (exact or louder/quieter) and `get_now_playing` do what they say. They run through delegation, like the app's own tools, so they take a couple of seconds and count toward the tools note in the instructions.
+- **Now playing.** When the station, the song or show, or the paused state changes, the session gets a line like "Now playing on Newstalk 1010: The Morning Show." as quiet context, so the model can answer "what's this song?" without a tool. A new session is told what's playing when it starts; a continued one only what changed.
+- **Stations.** `description` helps the model pick one ("play some news"). The list can change at runtime, e.g. with search results.
+- **What streams say is data.** Whoever runs a station controls its title and name, so the model is told them quoted, on one line and capped. With `allowUrls`, `play_media` still refuses URLs on the device or a local network, but only by the URL: a name that resolves to a local address, or a redirect to one, gets through, so turn it on only where that's acceptable.
