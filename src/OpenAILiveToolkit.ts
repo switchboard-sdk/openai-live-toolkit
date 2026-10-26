@@ -400,9 +400,10 @@ export function streamText(text: string): string {
  */
 export function isLocalUrl(url: string): boolean {
   const authority = url.match(/^[a-z]+:\/\/([^/?#]*)/i)?.[1]
-  // Credentials, IPv6 literals and backslashes have no place in a stream URL, and parse differently
-  // from one parser to the next.
-  if (authority === undefined || /[@[\]\\]/.test(authority) || url.includes('\\')) {
+  // Credentials, IPv6 literals, backslashes, escapes and non-ASCII (which IDN maps, e.g. fullwidth
+  // digits to ASCII ones) have no place in a stream host, and parse differently from one parser to
+  // the next.
+  if (authority === undefined || /[@[\]\\%]|[^\x21-\x7e]/.test(authority) || url.includes('\\')) {
     return true
   }
   const host = authority.replace(/:\d*$/, '').toLowerCase().replace(/\.$/, '')

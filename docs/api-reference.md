@@ -84,7 +84,7 @@ Lets the model control media and know what's playing while the component is moun
 | Option | Notes |
 | --- | --- |
 | `stations` | `MediaStation[]`: `{ name, url, description? }`. The model plays them by name. Can change at runtime. |
-| `allowUrls` | `false`. Lets the model play any public http(s) URL too, not only `stations`. URLs on the device or a local network are always refused. |
+| `allowUrls` | `false`. Lets the model play any http(s) URL too, not only `stations`. URLs that name the device or a local network are refused, but names resolving to local addresses and redirects aren't checked. |
 
 Registers `play_media`, `pause_media`, `resume_media`, `set_media_volume` and `get_now_playing`, and tells the session what's playing as quiet context.
 

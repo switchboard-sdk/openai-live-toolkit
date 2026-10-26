@@ -1332,6 +1332,8 @@ describe('media tools', () => {
       'http://[0:0:0:0:0:0:0:1]/',
       'http://user@radio.example/',
       'http://radio.example\\@127.0.0.1/',
+      'http://%31%32%37.0.0.1/',
+      'http://１２７.0.0.1/',
     ]) {
       expect(await callTool('play_media', { url })).toEqual({
         error: "URLs on the device or a local network can't be played.",
