@@ -2,6 +2,12 @@ import { AppState, PermissionsAndroid, Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
 import { androidModule } from './androidModule'
 import { cachePath, log, setLogListener, shareLogs, startLogFile } from './logs'
+import {
+  backgroundTimeout,
+  isNetworkAvailable,
+  onNetworkChanged,
+  synthesizeSpeech,
+} from './platform'
 import { NativeModuleRPCClient } from './NativeModuleRPCClient'
 import { SwitchboardClient } from './SwitchboardClient'
 import { DEFAULT_DELEGATE_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
@@ -91,7 +97,7 @@ export interface OpenAILiveToolkitInitializeOptions {
   /** Include the transcript and tool arguments and results in the log. Off by default. */
   logConversation?: boolean
   /**
-   * iOS, with {@link logFile}: keep this many seconds of audio from the microphone, what the model
+   * With {@link logFile}: keep this many seconds of audio from the microphone, what the model
    * hears and the output, which {@link shareLogs} zips with the log. Each takes about 0.4 MB of
    * memory per second. Off by default.
    */
@@ -129,10 +135,11 @@ export interface OpenAILiveToolkitInitializeOptions {
    */
   echoCancelledInput?: boolean
   /**
-   * iOS: when the network is gone for a few seconds, or a session can't be reached for longer, say
-   * so with the device's voice, and again once it's back; reconnect as soon as the network is back
-   * and play media that stopped meanwhile again. The model is told how long it was offline. Media is
-   * lowered while the device speaks. `true` says it in English. Off by default.
+   * When the network is gone for a few seconds, or a session can't be reached for longer, say so
+   * with the device's voice (on Android, its text-to-speech engine if it has one), and again once
+   * it's back; reconnect as soon as the network is back and play media that stopped meanwhile
+   * again. The model is told how long it was offline. Media is lowered while the device speaks.
+   * `true` says it in English. Off by default.
    */
   offlineNotice?: boolean | OfflineNotice
   /**
@@ -629,7 +636,7 @@ export function createOpenAILiveToolkit() {
   let continueConversation = false
   const voiceLevelListeners = new Set<VoiceLevelListener>()
   let voiceLevelTimer: ReturnType<typeof setInterval> | null = null
-  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  let cancelIdleTimer: (() => void) | null = null
   // The session was closed for idling and reopens when the user speaks.
   let idle = false
   // The latest session, which a wake continues. Null makes the next wake start fresh.
@@ -656,7 +663,7 @@ export function createOpenAILiveToolkit() {
   let offlineNotice: OfflineNotice | null = null
   let networkSubscription: OpenAILiveToolkitSubscription | null = null
   let networkUp = true
-  let offlineTimer: ReturnType<typeof setTimeout> | null = null
+  let cancelOfflineTimer: (() => void) | null = null
   // When the user was told the connection is gone; null while it isn't.
   let offlineSince: number | null = null
   // What the next session is told about the time offline.
@@ -801,8 +808,7 @@ export function createOpenAILiveToolkit() {
         NativeOpenAILiveToolkit.onOtherAppsDuckChanged(handleOtherAppsDuck)
     }
     echoCancelledInput = Platform.OS === 'ios' && (options.echoCancelledInput ?? false)
-    diagnosticAudioSeconds =
-      Platform.OS === 'ios' && options.logFile ? (options.diagnosticAudioSeconds ?? 0) : 0
+    diagnosticAudioSeconds = options.logFile ? (options.diagnosticAudioSeconds ?? 0) : 0
     setLogListener(diagnosticAudioSeconds > 0 ? labelAudio : null)
     // Route changes are logged natively, out of the listener's reach.
     if (diagnosticAudioSeconds > 0 && !routeSubscription) {
@@ -810,15 +816,14 @@ export function createOpenAILiveToolkit() {
         labelAudio(`audio route changed${connected ? ', Bluetooth connected' : ''}`)
       )
     }
-    offlineNotice =
-      Platform.OS !== 'ios' || !options.offlineNotice
-        ? null
-        : options.offlineNotice === true
-          ? DEFAULT_OFFLINE_NOTICE
-          : options.offlineNotice
+    offlineNotice = !options.offlineNotice
+      ? null
+      : options.offlineNotice === true
+        ? DEFAULT_OFFLINE_NOTICE
+        : options.offlineNotice
     if (offlineNotice && !networkSubscription) {
-      networkUp = NativeOpenAILiveToolkit.isNetworkAvailable()
-      networkSubscription = NativeOpenAILiveToolkit.onNetworkChanged(handleNetwork)
+      networkUp = isNetworkAvailable()
+      networkSubscription = onNetworkChanged(handleNetwork)
     }
     media.configure(options.media)
     microphone = options.microphone ?? 'phone'
@@ -1436,10 +1441,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     // A reconnect that fails starts watching again.
-    if (offlineTimer) {
-      clearTimeout(offlineTimer)
-      offlineTimer = null
-    }
+    stopWatchingOffline()
     if (!running) {
       return
     }
@@ -1456,12 +1458,12 @@ export function createOpenAILiveToolkit() {
 
   /** Tells the user the connection is gone if it still is after `ms`. */
   function watchOffline(ms: number): void {
-    if (!offlineNotice || offlineTimer || offlineSince !== null) {
+    if (!offlineNotice || cancelOfflineTimer || offlineSince !== null) {
       return
     }
     const notice = offlineNotice
-    offlineTimer = setTimeout(() => {
-      offlineTimer = null
+    cancelOfflineTimer = backgroundTimeout(() => {
+      cancelOfflineTimer = null
       if (!running || offlineSince !== null || (networkUp && (sessionLive || idle))) {
         return
       }
@@ -1470,6 +1472,11 @@ export function createOpenAILiveToolkit() {
       log('offline: telling the user')
       speakNotice(notice.offline)
     }, ms)
+  }
+
+  function stopWatchingOffline(): void {
+    cancelOfflineTimer?.()
+    cancelOfflineTimer = null
   }
 
   /** Once the user was told the connection is gone: says it's back, and has the model told. */
@@ -1494,7 +1501,7 @@ export function createOpenAILiveToolkit() {
    */
   async function speakNotice(text: string): Promise<void> {
     const language = offlineNotice?.language ?? DEFAULT_OFFLINE_NOTICE.language
-    const path = await NativeOpenAILiveToolkit.synthesizeSpeech(text, language)
+    const path = await synthesizeSpeech(text, language)
     if (!path || !running || !client) {
       return
     }
@@ -1503,7 +1510,7 @@ export function createOpenAILiveToolkit() {
     let finish = () => {}
     const finished = new Promise<void>((resolve) => {
       finish = resolve
-      setTimeout(resolve, NOTICE_TIMEOUT_MS)
+      backgroundTimeout(resolve, NOTICE_TIMEOUT_MS)
     })
     noticeFinished = finish
     features.forEach((f) => f.noticeSpeaking(true))
@@ -1519,10 +1526,7 @@ export function createOpenAILiveToolkit() {
   }
 
   function clearOffline(): void {
-    if (offlineTimer) {
-      clearTimeout(offlineTimer)
-      offlineTimer = null
-    }
+    stopWatchingOffline()
     offlineSince = null
     offlineNote = null
   }
@@ -1696,20 +1700,8 @@ export function createOpenAILiveToolkit() {
     }
     const timeoutMs =
       woken && wakeGraceMs > 0 ? Math.min(wakeGraceMs, idleTimeoutMs) : idleTimeoutMs
-    // JS timers stop while an Android app is in the background, so the countdown runs natively there.
-    const android = Platform.OS === 'android' ? androidModule() : undefined
-    if (android) {
-      android.setIdleTimer(timeoutMs).then((fired) => {
-        if (fired) {
-          goIdle()
-        }
-      })
-      return
-    }
-    if (idleTimer) {
-      clearTimeout(idleTimer)
-    }
-    idleTimer = setTimeout(goIdle, timeoutMs)
+    cancelIdleTimer?.()
+    cancelIdleTimer = backgroundTimeout(goIdle, timeoutMs)
   }
 
   /** The model answered a wake, so it was the user: back to the full timeout. */
@@ -1720,7 +1712,7 @@ export function createOpenAILiveToolkit() {
 
   /** Close a session nobody has talked in for {@link idleTimeoutMs}. */
   function goIdle(): void {
-    idleTimer = null
+    cancelIdleTimer = null
     // A session that isn't up bills nothing; the next sessionStarted restarts the countdown.
     if (!sessionLive) {
       return
@@ -1764,13 +1756,8 @@ export function createOpenAILiveToolkit() {
   }
 
   function resetIdle(): void {
-    if (idleTimer) {
-      clearTimeout(idleTimer)
-      idleTimer = null
-    }
-    if (idleTimeoutMs > 0 && Platform.OS === 'android') {
-      androidModule()?.cancelIdleTimer()
-    }
+    cancelIdleTimer?.()
+    cancelIdleTimer = null
     idle = false
     woken = false
     forking = false
@@ -1939,10 +1926,7 @@ export function createOpenAILiveToolkit() {
         syncToolsNote()
         features.forEach((f) => f.sessionStarted(continued))
         syncSessionNotes()
-        if (offlineTimer) {
-          clearTimeout(offlineTimer)
-          offlineTimer = null
-        }
+        stopWatchingOffline()
         announceBack()
         if (offlineNote) {
           addContext(offlineNote)

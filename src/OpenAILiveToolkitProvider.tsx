@@ -262,7 +262,7 @@ export interface OpenAILiveToolkitProviderProps {
   /** Include the transcript and tool arguments and results in the log. Off by default. */
   logConversation?: boolean
   /**
-   * iOS, with `logFile`: keep this many seconds of audio from the microphone, what the model hears
+   * With `logFile`: keep this many seconds of audio from the microphone, what the model hears
    * and the output, which `shareLogs` zips with the log. Each takes about 0.4 MB of memory per
    * second. Off by default. Fixed once initialized.
    */
@@ -293,7 +293,7 @@ export interface OpenAILiveToolkitProviderProps {
    */
   echoCancelledInput?: boolean
   /**
-   * iOS: say so with the device's voice when the connection is lost, reconnect and restart media as
+   * Say so with the device's voice when the connection is lost, reconnect and restart media as
    * soon as it's back, and have the model say it's back. `true` says it in English. Off by default.
    */
   offlineNotice?: boolean | OfflineNotice
