@@ -209,7 +209,7 @@ const VOICE_VOLUME_TOOL = voiceVolumeTool(openAILiveToolkit)
 
 /** Props for {@link OpenAILiveToolkitProvider}. Settings seed initial state. */
 export interface OpenAILiveToolkitProviderProps {
-  /** Switchboard app ID. Optional: falls back to the shared default credentials. */
+  /** Switchboard app ID. Optional: falls back to the demo credentials, which are rotated regularly. */
   appId?: string
   /** Switchboard app secret. Optional, with the same fallback as {@link appId}. */
   appSecret?: string

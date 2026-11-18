@@ -42,7 +42,7 @@ export interface OpenAILiveStartOptions {
 
 /** Credentials and session seeds for {@link OpenAILiveToolkit.initialize}. */
 export interface OpenAILiveToolkitInitializeOptions {
-  /** Switchboard app ID. Optional: falls back to the shared default credentials. */
+  /** Switchboard app ID. Optional: falls back to the demo credentials, which are rotated regularly. */
   appId?: string
   /** Switchboard app secret. Optional, with the same fallback as {@link appId}. */
   appSecret?: string
