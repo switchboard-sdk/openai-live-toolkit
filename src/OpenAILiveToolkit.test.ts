@@ -7,7 +7,7 @@ import {
   Platform,
   Share,
 } from 'react-native'
-import { NETWORK_CHANGED_EVENT } from './androidModule'
+import { AUDIO_FOCUS_CHANGED_EVENT, NETWORK_CHANGED_EVENT } from './androidModule'
 import {
   CONTEXT_INSTRUCTIONS,
   createOpenAILiveToolkit,
@@ -1894,6 +1894,7 @@ describe('Android', () => {
     permission.mockRestore()
     // Toolkits from earlier tests would hear the network events.
     DeviceEventEmitter.removeAllListeners(NETWORK_CHANGED_EVENT)
+    DeviceEventEmitter.removeAllListeners(AUDIO_FOCUS_CHANGED_EVENT)
   })
 
   it('asks for RECORD_AUDIO through PermissionsAndroid', async () => {
@@ -1948,6 +1949,22 @@ describe('Android', () => {
     expect(audioSession.stopAudioSession).not.toHaveBeenCalled()
     toolkit.stop()
     expect(audioSession.stopAudioSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes the audio focus that pauses other apps', async () => {
+    await running()
+    expect(audioSession.startAudioSession).toHaveBeenCalledWith(false)
+  })
+
+  it('with mixWithOthers, takes the audio focus that lets other apps play on', async () => {
+    await running({ ...CREDS, mixWithOthers: true })
+    expect(audioSession.startAudioSession).toHaveBeenCalledWith(true)
+  })
+
+  it('logs audio focus changes', async () => {
+    await running({ ...CREDS, logFile: true })
+    DeviceEventEmitter.emit(AUDIO_FOCUS_CHANGED_EVENT, 'lost')
+    expect(logged()).toContain('audio focus: lost')
   })
 
   it('starts the engine when the audio session fails', async () => {

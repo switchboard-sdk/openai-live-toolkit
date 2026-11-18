@@ -3,11 +3,17 @@ import { NativeModules } from 'react-native'
 /** Device event from {@link OpenAILiveToolkitAndroidModule.watchNetwork}, with whether the network is up. */
 export const NETWORK_CHANGED_EVENT = 'OpenAILiveToolkitNetworkChanged'
 
+/** Device event with how the engine's audio focus changed, such as 'lost'. */
+export const AUDIO_FOCUS_CHANGED_EVENT = 'OpenAILiveToolkitAudioFocusChanged'
+
 /** The toolkit's JVM module on Android (`OpenAILiveToolkitAndroidModule.kt`). */
 export interface OpenAILiveToolkitAndroidModule {
-  /** Start the microphone foreground service and the communication audio route. */
-  startAudioSession(): Promise<void>
-  /** Restore the normal audio route and stop the foreground service. */
+  /**
+   * Start the microphone foreground service, audio focus and the communication audio route. Other
+   * apps pause, or with `mixWithOthers` keep playing, lowered by the system.
+   */
+  startAudioSession(mixWithOthers: boolean): Promise<void>
+  /** Restore the normal audio route, give up audio focus and stop the foreground service. */
   stopAudioSession(): Promise<void>
   /** Resolves true after `ms`, false once cancelled. Runs in the background. */
   setTimer(id: number, ms: number): Promise<boolean>

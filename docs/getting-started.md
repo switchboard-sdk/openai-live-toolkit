@@ -91,6 +91,8 @@ The rest comes with the library:
 - **Background.** While the engine runs, a microphone foreground service with an ongoing notification keeps the conversation going with the screen locked or another app in front. Swiping the app away stops it. The session keeps billing meanwhile, so stop the engine when the conversation ends.
 - **Echo cancellation.** The mic and speaker open for voice communication and the audio mode switches to communication, routed to a connected headset, else the loudspeaker. Playback follows the in-call volume, which the volume keys control during a conversation. The canceller is the device's, so how well it works varies by phone.
 - **Bluetooth** always uses the headset's microphone and call-quality audio (HFP); `microphone` is iOS only.
+- **Other apps' audio.** Starting the engine takes the audio focus, so other apps pause, or with `mixWithOthers` keep playing, lowered by the system. See [Other apps' audio](#other-apps-audio).
+- **iOS only:** `voiceProcessing`, `echoCancelledInput`, `otherAudioDucking`, `duckOtherApps`, and Now Playing for media (`nowPlayingControls`).
 - **Offline notice.** `offlineNotice` speaks with the phone's text-to-speech engine. Most phones have one; on a phone without one the notice is silent, and the rest of it (reconnecting, lowering media, telling the model) still works.
 - **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
 
@@ -152,10 +154,11 @@ Set `continueConversation` on the provider to keep the conversation when a sessi
 
 ## Other apps' audio
 
-On iOS, starting the conversation stops other apps' audio, such as the Music app, unless `mixWithOthers` is set.
+Starting the conversation stops other apps' audio, such as the Music app, unless `mixWithOthers` is set.
 
-- **Mixing.** With `mixWithOthers`, other apps keep playing. Voice processing keeps them out of what the model hears, and `otherAudioDucking` lowers them while someone talks.
-- **Where voice processing doesn't lower them**, as over Bluetooth or on the speaker with `echoCancelledInput`, `duckOtherApps` lowers them while a session is open. The duck changes as a session opens and closes, and each change pauses the other app, so it only happens while the app calls `setOtherAudioResumable(true)`, as it should while it plays the other app itself; play it again from `addOtherAppsDuckListener`.
+- **Mixing.** With `mixWithOthers`, other apps keep playing. On iOS, voice processing keeps them out of what the model hears, and `otherAudioDucking` lowers them while someone talks. On Android the system lowers them for as long as the engine runs, and the phone's echo canceller keeps them from the model, how well depending on the phone.
+- **Another app starting** to play while the conversation runs plays alongside it. On Android the log says `audio focus: lost`.
+- **Where voice processing doesn't lower them** (iOS), as over Bluetooth or on the speaker with `echoCancelledInput`, `duckOtherApps` lowers them while a session is open. The duck changes as a session opens and closes, and each change pauses the other app, so it only happens while the app calls `setOtherAudioResumable(true)`, as it should while it plays the other app itself; play it again from `addOtherAppsDuckListener`.
 - **What plays.** An app that controls another app's player, such as the Music app's, can keep the model told what plays with `setSessionNote('music', 'Apple Music is playing "…".')`: each new session hears it, and a continued one only once the note changed. Register tools for it with `useTool`.
 
 With the toolkit's own [media](media.md) on, see [Another app's player](media.md#another-apps-player).

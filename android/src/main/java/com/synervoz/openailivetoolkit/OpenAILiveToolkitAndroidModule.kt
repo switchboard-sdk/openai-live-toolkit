@@ -3,7 +3,9 @@ package com.synervoz.openailivetoolkit
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
@@ -24,7 +26,7 @@ import java.util.zip.ZipOutputStream
  * Android platform glue for the C++ TurboModule, called from OpenAILiveToolkit.ts.
  *
  * While the engine runs it holds the audio session: a microphone foreground service so
- * the conversation survives the screen locking, and MODE_IN_COMMUNICATION (engages the
+ * the conversation survives the screen locking, audio focus, and MODE_IN_COMMUNICATION (engages the
  * hardware AEC — Samsung keeps it off otherwise) routed to a connected headset, else the
  * built-in loudspeaker (never the earpiece). The route is fixed at start.
  */
@@ -52,6 +54,19 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     reactContext.emitDeviceEvent(NETWORK_CHANGED_EVENT, available)
   }
 
+  // The engine plays on regardless; JS logs the change.
+  private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+    val name = when (change) {
+      AudioManager.AUDIOFOCUS_GAIN -> "gained"
+      AudioManager.AUDIOFOCUS_LOSS -> "lost"
+      AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> "lost for now"
+      AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> "lost, lowered"
+      else -> "changed ($change)"
+    }
+    reactContext.emitDeviceEvent(AUDIO_FOCUS_CHANGED_EVENT, name)
+  }
+  private var focusRequest: AudioFocusRequest? = null
+
   override fun invalidate() {
     network.stop()
     speech.shutdown()
@@ -59,9 +74,12 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     super.invalidate()
   }
 
-  /** Start the foreground service and the communication route. Call with the mic granted. */
+  /**
+   * Start the foreground service, audio focus and the communication route. Call with the mic
+   * granted.
+   */
   @ReactMethod
-  fun startAudioSession(promise: Promise) {
+  fun startAudioSession(mixWithOthers: Boolean, promise: Promise) {
     try {
       val context = reactContext.applicationContext
       val intent = Intent(context, OpenAILiveToolkitService::class.java)
@@ -70,23 +88,65 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
       } else {
         context.startService(intent)
       }
+      requestAudioFocus(mixWithOthers)
       enableCommunicationRoute(promise)
     } catch (e: Exception) {
       promise.reject("audio_session_error", e)
     }
   }
 
-  /** Restore the normal audio mode and route, and stop the foreground service. */
+  /** Restore the normal audio mode and route, give up audio focus, and stop the foreground service. */
   @ReactMethod
   fun stopAudioSession(promise: Promise) {
     try {
       disableCommunicationRoute()
+      abandonAudioFocus()
       val context = reactContext.applicationContext
       context.stopService(Intent(context, OpenAILiveToolkitService::class.java))
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("audio_session_error", e)
     }
+  }
+
+  /**
+   * Other apps' audio pauses while the engine runs, or with [mixWithOthers] keeps playing, lowered
+   * by the system.
+   */
+  private fun requestAudioFocus(mixWithOthers: Boolean) {
+    val gain = if (mixWithOthers) {
+      AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+    } else {
+      AudioManager.AUDIOFOCUS_GAIN
+    }
+    abandonAudioFocus()
+    val am = audioManager
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      @Suppress("DEPRECATION")
+      am.requestAudioFocus(focusListener, AudioManager.STREAM_VOICE_CALL, gain)
+      return
+    }
+    val attributes = AudioAttributes.Builder()
+      .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+      .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+      .build()
+    val request = AudioFocusRequest.Builder(gain)
+      .setAudioAttributes(attributes)
+      .setOnAudioFocusChangeListener(focusListener, mainHandler)
+      .build()
+    am.requestAudioFocus(request)
+    focusRequest = request
+  }
+
+  private fun abandonAudioFocus() {
+    val am = audioManager
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      @Suppress("DEPRECATION")
+      am.abandonAudioFocus(focusListener)
+      return
+    }
+    focusRequest?.let { am.abandonAudioFocusRequest(it) }
+    focusRequest = null
   }
 
   /** Enter communication mode; route to a connected headset if present, else the loudspeaker. */
@@ -293,6 +353,9 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
 
     /** Device event with whether the network is available, after [watchNetwork]. */
     const val NETWORK_CHANGED_EVENT = "OpenAILiveToolkitNetworkChanged"
+
+    /** Device event with how the audio focus [startAudioSession] took changed, such as "lost". */
+    const val AUDIO_FOCUS_CHANGED_EVENT = "OpenAILiveToolkitAudioFocusChanged"
 
     private const val ROUTE_TIMEOUT_MS = 3000L
 

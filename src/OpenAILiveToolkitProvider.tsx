@@ -267,7 +267,7 @@ export interface OpenAILiveToolkitProviderProps {
    * second. Off by default. Fixed once initialized.
    */
   diagnosticAudioSeconds?: number
-  /** iOS: play alongside other apps' audio, like music, instead of stopping it. Off by default. */
+  /** Play alongside other apps' audio, like music, instead of stopping it. Off by default. */
   mixWithOthers?: boolean
   /** iOS 17+, with `mixWithOthers`: how far other apps' audio is lowered while someone talks. Defaults to `'min'`. */
   otherAudioDucking?: OtherAudioDucking

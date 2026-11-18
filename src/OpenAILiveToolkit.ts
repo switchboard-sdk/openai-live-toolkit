@@ -5,6 +5,7 @@ import { cachePath, log, setLogListener, shareLogs, startLogFile } from './logs'
 import {
   backgroundTimeout,
   isNetworkAvailable,
+  onAudioFocusChanged,
   onNetworkChanged,
   synthesizeSpeech,
 } from './platform'
@@ -103,8 +104,9 @@ export interface OpenAILiveToolkitInitializeOptions {
    */
   diagnosticAudioSeconds?: number
   /**
-   * iOS: play alongside other apps' audio, like music, instead of stopping it. Off by default.
-   * Voice processing still lowers that audio; see {@link otherAudioDucking}.
+   * Play alongside other apps' audio, like music, instead of stopping it. Off by default. On iOS,
+   * voice processing still lowers that audio; see {@link otherAudioDucking}. On Android the system
+   * lowers it while the engine runs.
    */
   mixWithOthers?: boolean
   /**
@@ -662,6 +664,7 @@ export function createOpenAILiveToolkit() {
   let routeSubscription: OpenAILiveToolkitSubscription | null = null
   let offlineNotice: OfflineNotice | null = null
   let networkSubscription: OpenAILiveToolkitSubscription | null = null
+  let audioFocusSubscription: OpenAILiveToolkitSubscription | null = null
   let networkUp = true
   let cancelOfflineTimer: (() => void) | null = null
   // When the user was told the connection is gone; null while it isn't.
@@ -825,6 +828,8 @@ export function createOpenAILiveToolkit() {
       networkUp = isNetworkAvailable()
       networkSubscription = onNetworkChanged(handleNetwork)
     }
+    // Logged, and so labelled on the recordings.
+    audioFocusSubscription ??= onAudioFocusChanged((change) => log(`audio focus: ${change}`))
     media.configure(options.media)
     microphone = options.microphone ?? 'phone'
     logConversation = options.logConversation ?? false
@@ -979,7 +984,7 @@ export function createOpenAILiveToolkit() {
       }
     }
     try {
-      await androidModule()?.startAudioSession()
+      await androidModule()?.startAudioSession(otherAudio.mix)
     } catch {
       // Carry on without it.
     }
