@@ -1,6 +1,6 @@
 import { DeviceEventEmitter, Platform } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
-import { androidModule, NETWORK_CHANGED_EVENT } from './androidModule'
+import { androidModule, AUDIO_FOCUS_CHANGED_EVENT, NETWORK_CHANGED_EVENT } from './androidModule'
 
 // What the C++ module does with its iOS hooks, the JVM module does on Android.
 function android() {
@@ -42,6 +42,11 @@ export function onNetworkChanged(listener: (available: boolean) => void): { remo
   const subscription = DeviceEventEmitter.addListener(NETWORK_CHANGED_EVENT, listener)
   module.watchNetwork()
   return subscription
+}
+
+/** Android: calls `listener` with how the engine's audio focus changed, such as 'lost'. Null elsewhere. */
+export function onAudioFocusChanged(listener: (change: string) => void): { remove(): void } | null {
+  return android() ? DeviceEventEmitter.addListener(AUDIO_FOCUS_CHANGED_EVENT, listener) : null
 }
 
 /** Resolves to a WAV file of `text` said in `language` with the device's voice, or ''. */
