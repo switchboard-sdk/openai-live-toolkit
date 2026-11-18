@@ -1,0 +1,279 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		7A1C00000000000000000101 /* AudioRouteTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C00000000000000000201 /* AudioRouteTests.mm */; };
+		7A1C00000000000000000102 /* OtherAppsDuckTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C00000000000000000202 /* OtherAppsDuckTests.mm */; };
+		7A1C00000000000000000103 /* NowPlayingTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C00000000000000000203 /* NowPlayingTests.mm */; };
+		7A1C00000000000000000104 /* PlatformHooksTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C00000000000000000204 /* PlatformHooksTests.mm */; };
+		7A1C00000000000000000105 /* OpenAILiveToolkitAudioRoute.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C00000000000000000206 /* OpenAILiveToolkitAudioRoute.mm */; };
+		7A1C00000000000000000106 /* OpenAILiveToolkitOtherAppsDuck.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C00000000000000000208 /* OpenAILiveToolkitOtherAppsDuck.mm */; };
+		7A1C00000000000000000107 /* OpenAILiveToolkitNowPlaying.mm in Sources */ = {isa = PBXBuildFile; fileRef = 7A1C0000000000000000020A /* OpenAILiveToolkitNowPlaying.mm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		7A1C00000000000000000201 /* AudioRouteTests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AudioRouteTests.mm; sourceTree = "<group>"; };
+		7A1C00000000000000000202 /* OtherAppsDuckTests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OtherAppsDuckTests.mm; sourceTree = "<group>"; };
+		7A1C00000000000000000203 /* NowPlayingTests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NowPlayingTests.mm; sourceTree = "<group>"; };
+		7A1C00000000000000000204 /* PlatformHooksTests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PlatformHooksTests.mm; sourceTree = "<group>"; };
+		7A1C00000000000000000205 /* OpenAILiveToolkitAudioRoute.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OpenAILiveToolkitAudioRoute.h; sourceTree = "<group>"; };
+		7A1C00000000000000000206 /* OpenAILiveToolkitAudioRoute.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OpenAILiveToolkitAudioRoute.mm; sourceTree = "<group>"; };
+		7A1C00000000000000000207 /* OpenAILiveToolkitOtherAppsDuck.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OpenAILiveToolkitOtherAppsDuck.h; sourceTree = "<group>"; };
+		7A1C00000000000000000208 /* OpenAILiveToolkitOtherAppsDuck.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OpenAILiveToolkitOtherAppsDuck.mm; sourceTree = "<group>"; };
+		7A1C00000000000000000209 /* OpenAILiveToolkitNowPlaying.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = OpenAILiveToolkitNowPlaying.h; sourceTree = "<group>"; };
+		7A1C0000000000000000020A /* OpenAILiveToolkitNowPlaying.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OpenAILiveToolkitNowPlaying.mm; sourceTree = "<group>"; };
+		7A1C0000000000000000020B /* PlatformHooks.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = PlatformHooks.hpp; sourceTree = "<group>"; };
+		7A1C0000000000000000020C /* OpenAILiveToolkitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenAILiveToolkitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7A1C00000000000000000401 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		7A1C00000000000000000301 = {
+			isa = PBXGroup;
+			children = (
+				7A1C00000000000000000302 /* Tests */,
+				7A1C00000000000000000303 /* ios */,
+				7A1C00000000000000000304 /* cpp */,
+				7A1C00000000000000000305 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7A1C00000000000000000302 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				7A1C00000000000000000201 /* AudioRouteTests.mm */,
+				7A1C00000000000000000202 /* OtherAppsDuckTests.mm */,
+				7A1C00000000000000000203 /* NowPlayingTests.mm */,
+				7A1C00000000000000000204 /* PlatformHooksTests.mm */,
+			);
+			name = Tests;
+			sourceTree = "<group>";
+		};
+		7A1C00000000000000000303 /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				7A1C00000000000000000205 /* OpenAILiveToolkitAudioRoute.h */,
+				7A1C00000000000000000206 /* OpenAILiveToolkitAudioRoute.mm */,
+				7A1C00000000000000000207 /* OpenAILiveToolkitOtherAppsDuck.h */,
+				7A1C00000000000000000208 /* OpenAILiveToolkitOtherAppsDuck.mm */,
+				7A1C00000000000000000209 /* OpenAILiveToolkitNowPlaying.h */,
+				7A1C0000000000000000020A /* OpenAILiveToolkitNowPlaying.mm */,
+			);
+			name = ios;
+			path = ..;
+			sourceTree = "<group>";
+		};
+		7A1C00000000000000000304 /* cpp */ = {
+			isa = PBXGroup;
+			children = (
+				7A1C0000000000000000020B /* PlatformHooks.hpp */,
+			);
+			name = cpp;
+			path = ../../cpp;
+			sourceTree = "<group>";
+		};
+		7A1C00000000000000000305 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7A1C0000000000000000020C /* OpenAILiveToolkitTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		7A1C00000000000000000501 /* OpenAILiveToolkitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A1C00000000000000000702 /* Build configuration list for PBXNativeTarget "OpenAILiveToolkitTests" */;
+			buildPhases = (
+				7A1C00000000000000000402 /* Sources */,
+				7A1C00000000000000000401 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenAILiveToolkitTests;
+			productName = OpenAILiveToolkitTests;
+			productReference = 7A1C0000000000000000020C /* OpenAILiveToolkitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7A1C00000000000000000601 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = 7A1C00000000000000000701 /* Build configuration list for PBXProject "OpenAILiveToolkitTests" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 7A1C00000000000000000301;
+			productRefGroup = 7A1C00000000000000000305 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				7A1C00000000000000000501 /* OpenAILiveToolkitTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7A1C00000000000000000402 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A1C00000000000000000101 /* AudioRouteTests.mm in Sources */,
+				7A1C00000000000000000102 /* OtherAppsDuckTests.mm in Sources */,
+				7A1C00000000000000000103 /* NowPlayingTests.mm in Sources */,
+				7A1C00000000000000000104 /* PlatformHooksTests.mm in Sources */,
+				7A1C00000000000000000105 /* OpenAILiveToolkitAudioRoute.mm in Sources */,
+				7A1C00000000000000000106 /* OpenAILiveToolkitOtherAppsDuck.mm in Sources */,
+				7A1C00000000000000000107 /* OpenAILiveToolkitNowPlaying.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		7A1C00000000000000000801 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGNING_ALLOWED = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		7A1C00000000000000000802 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGNING_ALLOWED = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		7A1C00000000000000000803 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/..",
+					"$(SRCROOT)/../../cpp",
+				);
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"-framework",
+					AVFAudio,
+					"-framework",
+					MediaPlayer,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.synervoz.openailivetoolkit.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7A1C00000000000000000804 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/..",
+					"$(SRCROOT)/../../cpp",
+				);
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"-framework",
+					AVFAudio,
+					"-framework",
+					MediaPlayer,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.synervoz.openailivetoolkit.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		7A1C00000000000000000701 /* Build configuration list for PBXProject "OpenAILiveToolkitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A1C00000000000000000801 /* Debug */,
+				7A1C00000000000000000802 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7A1C00000000000000000702 /* Build configuration list for PBXNativeTarget "OpenAILiveToolkitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A1C00000000000000000803 /* Debug */,
+				7A1C00000000000000000804 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 7A1C00000000000000000601 /* Project object */;
+}
