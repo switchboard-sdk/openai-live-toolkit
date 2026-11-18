@@ -15,7 +15,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `transport` prop: `'webrtc'` by default, where the Switchboard backend creates the session and the app holds no OpenAI key; `'websocket'` with `openAIApiKey`.
 - `SWITCHBOARD_LOCAL_BUILD` for frameworks built from a `switchboard-sdk` checkout.
 - `apiUrl` prop for another Switchboard backend.
-- Android support, without speaker isolation: the Switchboard AARs are fetched on the first Gradle build, a microphone foreground service keeps the conversation going in the background, and the example app has an Android target.
+- Android support, without speaker isolation: the Switchboard SDK comes from the Synervoz Maven repository, a microphone foreground service keeps the conversation going in the background, and the example app has an Android target.
 - `idleTimeoutMs`: closes the session during silences and reopens it, forked from the closed one, when the user speaks.
 - `continueConversation`: `start()` after `stop()` continues the conversation, forked from the session the stop closed, and `start({ continueSessionId })` continues a session the app saved before it was killed. OpenAI stores each session while it's on. `sessionId` and `newConversation()` on the hook; the example app resumes a conversation from the last 24 hours.
 - `logFile`, `logConversation` and `shareLogs()`: the SDK's log and the toolkit's events, optionally with the conversation, in a file in the caches directory, shared through the share sheet. The log starts with the app's name, version and build, the iOS version, the device model and the SDK version. On iOS the log has the engine's state (running, interrupted, failed, stopped, and why) and its route. The example app has a Share logs link.

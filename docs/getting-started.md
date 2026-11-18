@@ -9,7 +9,7 @@ npm install /path/to/synervoz-openai-live-toolkit-0.1.0.tgz
 cd ios && bundle exec pod install
 ```
 
-On Android the first Gradle build fetches the libraries instead; see [Android setup](#android-setup).
+On Android, Gradle gets the libraries from the Synervoz Maven repository instead; see [Android setup](#android-setup).
 
 `pod install` runs `scripts/download-ios-frameworks.sh`, which downloads `SwitchboardSDK`, `SwitchboardOpenAI`, and `SwitchboardSileroVAD` with `SwitchboardOnnx` (for idle mode) from the public Switchboard SDK builds into `ios/Frameworks/`.
 
@@ -49,11 +49,21 @@ With both, `speakerIsolation.available` is true and Quail sits in front of the m
 
 ## Android setup
 
-The C++ TurboModule is compiled in the app's native build and links the Switchboard AARs through Prefab. The first Gradle build runs `scripts/download-android-libraries.sh`, which pulls `SwitchboardSDK`, `SwitchboardOpenAI`, and `SwitchboardSileroVAD` with `SwitchboardOnnx` (for idle mode) into the toolkit's `android/libs/`. It takes the same `SWITCHBOARD_BUILD` and `SWITCHBOARD_LOCAL_BUILD` as the iOS script. Later builds reuse the AARs, so after changing either variable, or to get a newer `develop`, delete `android/libs/` in the toolkit and run `npm run android:libraries` from the toolkit checkout.
+The C++ TurboModule is compiled in the app's native build and links the Switchboard SDK through Prefab. The toolkit depends on the SDK and its OpenAI extension, and on Silero VAD with Onnx (for idle mode), version 3.3.0, from the Synervoz Maven repository. Set `switchboardVersion` in the root `ext` block, next to the NDK below, to use another version. Until 3.3.0 is released, Maven's 3.3.0 is the latest development build. Gradle keeps the one it downloaded first, so run `./gradlew --refresh-dependencies` to get a newer one.
 
-The app needs three changes:
+The app needs four changes:
 
-1. **Prefab**, in `android/app/build.gradle`:
+1. **The Synervoz Maven repository**, in the root `android/build.gradle`:
+
+   ```groovy
+   allprojects {
+       repositories {
+           maven { url "https://s3.amazonaws.com/synervoz-android-maven-repository" }
+       }
+   }
+   ```
+
+2. **Prefab**, in `android/app/build.gradle`:
 
    ```groovy
    android {
@@ -63,13 +73,13 @@ The app needs three changes:
    }
    ```
 
-2. **NDK 29**, in the `buildscript { ext { … } }` block of the root `android/build.gradle`. The React Native template's 27.x builds, but the app fails at launch with `cannot locate symbol "__cxa_init_primary_exception"`:
+3. **NDK 29**, in the `buildscript { ext { … } }` block of the root `android/build.gradle`. The React Native template's 27.x builds, but the app fails at launch with `cannot locate symbol "__cxa_init_primary_exception"`:
 
    ```groovy
    ndkVersion = "29.0.14206865"
    ```
 
-3. **No 32-bit x86**, in `android/gradle.properties`. The AARs ship `arm64-v8a`, `armeabi-v7a` and `x86_64`:
+4. **No 32-bit x86**, in `android/gradle.properties`. The AARs ship `arm64-v8a`, `armeabi-v7a` and `x86_64`:
 
    ```properties
    reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64

@@ -22,4 +22,11 @@ buildscript {
     }
 }
 
+// The Switchboard SDK the toolkit depends on.
+allprojects {
+    repositories {
+        maven { url "https://s3.amazonaws.com/synervoz-android-maven-repository" }
+    }
+}
+
 apply plugin: "com.facebook.react.rootproject"

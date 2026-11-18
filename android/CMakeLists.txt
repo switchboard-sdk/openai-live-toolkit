@@ -23,7 +23,7 @@ target_include_directories(react-native-openailivetoolkit PUBLIC "${OPENAILIVETO
 # There is no Android build of the AICoustics extension, so no speaker isolation.
 target_compile_definitions(react-native-openailivetoolkit PRIVATE OPENAI_LIVE_TOOLKIT_AICOUSTICS=0)
 
-# Switchboard SDK + extensions via Prefab, from the AARs in android/libs.
+# Switchboard SDK + extensions via Prefab, from the AARs build.gradle depends on.
 find_package(SwitchboardSDK REQUIRED CONFIG)
 find_package(SwitchboardOpenAI REQUIRED CONFIG)
 # Silero VAD and the Onnx runtime it runs on, for idle mode.

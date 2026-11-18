@@ -26,7 +26,7 @@ Open `ios/OpenAILiveToolkitExample.xcworkspace`, pick your team under Signing & 
 npm run android
 ```
 
-The first build fetches the Switchboard AARs into the toolkit's `android/libs/` (see [Android setup](../docs/getting-started.md#android-setup)). Runs on a phone or an arm64/x86_64 emulator.
+The first build downloads the Switchboard SDK from the Synervoz Maven repository (see [Android setup](../docs/getting-started.md#android-setup)). Runs on a phone or an arm64/x86_64 emulator.
 
 ### Speaker isolation (optional)
 
