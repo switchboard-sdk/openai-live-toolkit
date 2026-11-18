@@ -212,6 +212,16 @@ describe('start guards', () => {
     expect(commandFor('createEngine')).toBeUndefined()
   })
 
+  it("throws the native reason when iOS can't ask for the mic", async () => {
+    native.requestMicrophonePermission.mockRejectedValue(new Error('no usage string'))
+    await expect(initialized().start()).rejects.toMatchObject({
+      code: 'MIC_PERMISSION_DENIED',
+      message: 'no usage string',
+      fatal: true,
+    })
+    expect(commandFor('createEngine')).toBeUndefined()
+  })
+
   it('throws with the error body when createEngine returns no id', async () => {
     scriptNative((req) =>
       req.params?.actionName === 'createEngine'

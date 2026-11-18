@@ -7,9 +7,10 @@
 
 namespace openailivetoolkit {
 
-// Platform-provided mic-permission request; calls the completion with the
-// grant result (async, may complete on any thread).
-using MicrophonePermissionHook = std::function<void(std::function<void(bool)>)>;
+// Platform-provided mic-permission request; calls the completion with the grant result, or with
+// why it couldn't ask (async, may complete on any thread).
+using MicrophonePermissionCompletion = std::function<void(bool granted, const std::string& error)>;
+using MicrophonePermissionHook = std::function<void(MicrophonePermissionCompletion)>;
 
 // Platform-provided check: a Bluetooth microphone is available, or audio goes to Bluetooth.
 using BluetoothConnectedHook = std::function<bool()>;
@@ -49,9 +50,9 @@ struct PlatformHooks {
   OtherAppsDuckHooks otherAppsDuck;
   DeviceHooks device;
 
-  void requestMicrophonePermission(std::function<void(bool)> completion) const {
+  void requestMicrophonePermission(MicrophonePermissionCompletion completion) const {
     if (!microphonePermission) {
-      completion(true);
+      completion(true, "");
       return;
     }
     microphonePermission(std::move(completion));

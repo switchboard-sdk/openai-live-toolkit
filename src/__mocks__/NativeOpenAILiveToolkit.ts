@@ -1,7 +1,6 @@
 // Manual Jest mock for the native TurboModule seam.
 //
-// `TurboModuleRegistry.getEnforcing('OpenAILiveToolkit')` throws under Jest (no native
-// module registered), so every suite that pulls in code touching
+// The real module throws under Jest (no native module registered), so every suite that pulls in code touching
 // `./NativeOpenAILiveToolkit` must mock it. Jest auto-uses this file when a suite calls
 // `jest.mock('./NativeOpenAILiveToolkit')`.
 //
