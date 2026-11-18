@@ -67,6 +67,12 @@ function Screen() {
 
 That is a working voice agent, tool call included. `start()` requests the microphone, builds the audio graph with echo cancellation on, and opens the session. `useTool` tells the model the tool exists and routes the call to your handler; the return value goes back automatically. Talk over the agent and GPT-Live handles the interruption itself.
 
+## How it works
+
+![How openai-live-toolkit works](docs/architecture.svg)
+
+The audio engine, the `OpenAI.Live` node and the toolkit's provider run on the phone. Audio, events and tool calls share one live session with OpenAI, so a tool call never leaves the conversation. With the default `webrtc` transport, the Switchboard backend sets up each session with your Switchboard app's OpenAI key, and the app ships without one ([Credentials](docs/getting-started.md#credentials)). [Tools](docs/tools.md) covers how delegation works.
+
 ## Other voices in the room
 
 Because GPT-Live listens all the time, everything the microphone picks up is you as far as the model is concerned. A podcast playing, a colleague on a call at the next desk, a TV in the background: the model hears a second voice talking continuously, decides you haven't finished, and stops taking turns. In our tests with a competing talker, the model answered about one prompt in ten.
