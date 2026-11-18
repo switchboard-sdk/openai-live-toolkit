@@ -43,12 +43,26 @@ using namespace openailivetoolkit;
 - (void)testMicrophonePermission {
   PlatformHooks hooks;
   std::optional<bool> granted;
-  hooks.requestMicrophonePermission([&](bool result) { granted = result; });
+  std::string error = "none";
+  auto record = [&](bool result, const std::string &why) {
+    granted = result;
+    error = why;
+  };
+  hooks.requestMicrophonePermission(record);
   XCTAssertTrue(granted == true);
+  XCTAssertEqual(error, "");
 
-  hooks.microphonePermission = [](std::function<void(bool)> completion) { completion(false); };
-  hooks.requestMicrophonePermission([&](bool result) { granted = result; });
+  hooks.microphonePermission = [](MicrophonePermissionCompletion completion) {
+    completion(false, "");
+  };
+  hooks.requestMicrophonePermission(record);
   XCTAssertTrue(granted == false);
+
+  hooks.microphonePermission = [](MicrophonePermissionCompletion completion) {
+    completion(false, "no usage string");
+  };
+  hooks.requestMicrophonePermission(record);
+  XCTAssertEqual(error, "no usage string");
 }
 
 - (void)testNowPlaying {

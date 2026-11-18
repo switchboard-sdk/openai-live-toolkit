@@ -9,7 +9,7 @@ export type OpenAILiveErrorCode =
   | 'NOT_INITIALIZED'
   /** No OpenAI API key for the `websocket` transport. */
   | 'MISSING_API_KEY'
-  /** The user denied microphone access. */
+  /** The user denied microphone access, or (iOS) the app's Info.plist has no `NSMicrophoneUsageDescription`. */
   | 'MIC_PERMISSION_DENIED'
   /** The audio graph couldn't be built. */
   | 'ENGINE_CREATION_FAILED'
@@ -57,6 +57,15 @@ export class OpenAILiveError extends Error {
     this.fatal = fatal
     this.details = details
   }
+}
+
+/** The microphone is denied. */
+export function microphoneDenied(): OpenAILiveError {
+  return new OpenAILiveError(
+    'MIC_PERMISSION_DENIED',
+    "Microphone access is denied. Allow it for this app in the device's settings.",
+    true
+  )
 }
 
 /** `err` as an {@link OpenAILiveError}, wrapping an unexpected throw with `code`. */

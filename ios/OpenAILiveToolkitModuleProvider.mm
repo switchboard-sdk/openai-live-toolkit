@@ -371,14 +371,20 @@ static void MonitorNetwork(std::weak_ptr<facebook::react::NativeOpenAILiveToolki
   // Mic-permission request lives here — the C++ module can't reach AVFoundation.
   // Prompts once; a prior decision resolves without UI.
   facebook::react::NativeOpenAILiveToolkit::setMicrophonePermissionHook(
-      [](std::function<void(bool)> completion) {
+      [](openailivetoolkit::MicrophonePermissionCompletion completion) {
+        // Without the usage string iOS terminates the app on the request.
+        if (![NSBundle.mainBundle objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"]) {
+          completion(false, "The app's Info.plist has no NSMicrophoneUsageDescription, so iOS "
+                            "can't ask for the microphone. Add one.");
+          return;
+        }
         if (@available(iOS 17.0, *)) {
           [AVAudioApplication requestRecordPermissionWithCompletionHandler:^(BOOL granted) {
-            completion(granted);
+            completion(granted, "");
           }];
         } else {
           [[AVAudioSession sharedInstance] requestRecordPermission:^(BOOL granted) {
-            completion(granted);
+            completion(granted, "");
           }];
         }
       });

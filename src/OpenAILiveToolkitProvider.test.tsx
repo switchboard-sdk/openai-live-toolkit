@@ -325,6 +325,20 @@ describe('start / stop / release', () => {
     expect(result.current.error?.code).toBe('MIC_PERMISSION_DENIED')
   })
 
+  it("lands in error with the reason when the app can't ask for the mic", async () => {
+    toolkit.requestMicrophonePermission.mockImplementation(() =>
+      Promise.reject(new OpenAILiveError('MIC_PERMISSION_DENIED', 'no usage string', true))
+    )
+    const { result } = renderProvider()
+    await act(() => result.current.start())
+    expect(toolkit.start).not.toHaveBeenCalled()
+    expect(result.current.hasMicrophonePermission).toBe(false)
+    expect(result.current.error).toMatchObject({
+      code: 'MIC_PERMISSION_DENIED',
+      message: 'no usage string',
+    })
+  })
+
   it('a failed start lands in error with its code', async () => {
     toolkit.start.mockImplementation(() =>
       Promise.reject(new OpenAILiveError('MISSING_API_KEY', 'no key', true))

@@ -6,7 +6,7 @@ import { NativeModuleRPCClient } from './NativeModuleRPCClient'
 import { SwitchboardClient } from './SwitchboardClient'
 import { DEFAULT_DELEGATE_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { DEFAULT_SWITCHBOARD_APP_ID, DEFAULT_SWITCHBOARD_APP_SECRET } from './credentials'
-import { OpenAILiveError, type OpenAILiveErrorCode } from './errors'
+import { OpenAILiveError, asLiveError, microphoneDenied, type OpenAILiveErrorCode } from './errors'
 import type { FeatureGraph, FeatureHost, ToolkitFeature } from './feature'
 import { createMedia } from './media/media'
 import type { MediaOptions } from './media/types'
@@ -943,13 +943,21 @@ export function createOpenAILiveToolkit() {
     }
   }
 
-  /** Request microphone permission; resolves to whether it's granted. Called by {@link start}. */
+  /**
+   * Request microphone permission; resolves to whether it's granted. Called by {@link start}.
+   * @throws {OpenAILiveError} `MIC_PERMISSION_DENIED` on iOS when Info.plist has no
+   * `NSMicrophoneUsageDescription`, which iOS needs before it asks.
+   */
   async function requestMicrophonePermission(): Promise<boolean> {
     if (Platform.OS === 'android') {
       const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)
       return result === PermissionsAndroid.RESULTS.GRANTED
     }
-    return NativeOpenAILiveToolkit.requestMicrophonePermission()
+    try {
+      return await NativeOpenAILiveToolkit.requestMicrophonePermission()
+    } catch (err) {
+      throw asLiveError(err, 'MIC_PERMISSION_DENIED', true)
+    }
   }
 
   /**
@@ -1006,7 +1014,7 @@ export function createOpenAILiveToolkit() {
     const c = client
 
     if (!(await requestMicrophonePermission())) {
-      throw new OpenAILiveError('MIC_PERMISSION_DENIED', 'Microphone permission denied', true)
+      throw microphoneDenied()
     }
 
     // Create the engine once; start/stop reuse it, release() frees it.

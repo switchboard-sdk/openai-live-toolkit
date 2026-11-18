@@ -130,7 +130,13 @@ std::string NativeOpenAILiveToolkit::getDocumentsPath(jsi::Runtime& rt) {
 AsyncPromise<bool> NativeOpenAILiveToolkit::requestMicrophonePermission(jsi::Runtime& rt) {
   AsyncPromise<bool> promise(rt, jsInvoker_);
   // resolve() hops back to the JS thread; the completion may fire on any thread.
-  s_hooks.requestMicrophonePermission([promise](bool granted) mutable { promise.resolve(granted); });
+  s_hooks.requestMicrophonePermission([promise](bool granted, const std::string& error) mutable {
+    if (!error.empty()) {
+      promise.reject(Error(error));
+      return;
+    }
+    promise.resolve(granted);
+  });
   return promise;
 }
 

@@ -92,7 +92,7 @@ Every failure is an `OpenAILiveError` with a `code`, a `message` and `fatal`. Fa
 | `INIT_FAILED` | yes | The SDK refused to initialize. |
 | `NOT_INITIALIZED` | yes | `start()` before the SDK came up. |
 | `MISSING_API_KEY` | yes | No OpenAI key with the `websocket` transport. |
-| `MIC_PERMISSION_DENIED` | yes | The user denied the microphone. |
+| `MIC_PERMISSION_DENIED` | yes | The user denied the microphone, or (iOS) the app's `Info.plist` has no `NSMicrophoneUsageDescription`. |
 | `ENGINE_CREATION_FAILED` | yes | The graph couldn't be built. |
 | `ENGINE_START_FAILED` | yes | The engine refused to start. |
 | `ENGINE_STOP_FAILED` | yes | The engine refused to stop; it's still running. |

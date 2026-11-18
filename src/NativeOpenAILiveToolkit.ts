@@ -88,4 +88,16 @@ export interface Spec extends TurboModule {
   readonly zipFiles: (paths: string, zipPath: string) => string
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('OpenAILiveToolkit')
+function loadNativeModule(): Spec {
+  const native = TurboModuleRegistry.get<Spec>('OpenAILiveToolkit')
+  if (!native) {
+    throw new Error(
+      "openai-live-toolkit's native module isn't in this app build. Rebuild the app after " +
+        'installing the package, with `pod install` in ios/ first on iOS. It needs the new ' +
+        'architecture and runs in iOS and Android builds, not in Expo Go or on the web.'
+    )
+  }
+  return native
+}
+
+export default loadNativeModule()

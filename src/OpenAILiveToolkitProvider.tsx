@@ -8,7 +8,7 @@ import React, {
   type ReactNode,
 } from 'react'
 import { AppState, Platform } from 'react-native'
-import { asLiveError } from './errors'
+import { asLiveError, microphoneDenied } from './errors'
 import {
   openAILiveToolkit,
   OpenAILiveError,
@@ -499,8 +499,12 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       const granted = (await toolkitRef.current?.requestMicrophonePermission()) ?? false
       setHasMicrophonePermission(granted)
       return granted
-    } catch {
+    } catch (err) {
       setHasMicrophonePermission(false)
+      // The app can't ask at all, such as with no usage string in Info.plist.
+      if (err instanceof OpenAILiveError) {
+        throw err
+      }
       return false
     }
   }, [])
@@ -510,9 +514,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       setError(null)
       try {
         if (!(await requestMicrophonePermission())) {
-          reportError(
-            new OpenAILiveError('MIC_PERMISSION_DENIED', 'Microphone permission denied', true)
-          )
+          reportError(microphoneDenied())
           return
         }
         await toolkitRef.current?.start(options)
