@@ -99,5 +99,8 @@
       }
     }
   },
-  "private": true
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

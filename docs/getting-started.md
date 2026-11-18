@@ -2,10 +2,8 @@
 
 ## Install
 
-The package isn't published. Depend on the checkout, or on a tarball from `npm pack` (see [CONTRIBUTING](../CONTRIBUTING.md#testing-against-a-real-consumer-app)):
-
 ```sh
-npm install /path/to/synervoz-openai-live-toolkit-0.1.0.tgz
+npm install @synervoz/openai-live-toolkit
 cd ios && bundle exec pod install
 ```
 

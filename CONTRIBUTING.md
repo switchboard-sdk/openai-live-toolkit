@@ -76,14 +76,20 @@ CI runs the suite too.
 
 ## Release
 
-The package isn't published to npm yet. Versions follow [Semantic Versioning](https://semver.org/).
+Releases are published to npm when a version tag is pushed. Versions follow [Semantic Versioning](https://semver.org/).
 
-1. Update [`CHANGELOG.md`](CHANGELOG.md): move the `[Unreleased]` entries under a new version heading with the release date.
-2. Bump the version (this also creates the git tag) and push both:
+1. Check that the download scripts pin a `release/<version>` Switchboard SDK build, not a `develop` one.
+2. Update [`CHANGELOG.md`](CHANGELOG.md): move the `[Unreleased]` entries under a new version heading with the release date.
+3. Bump the version (this also creates the git tag) and push both:
 
 ```sh
 npm version patch   # or minor / major
 git push && git push --tags
 ```
 
-Consumers install from a tarball built with `npm pack` at that tag.
+The [release workflow](.github/workflows/publish.yml) builds the package and publishes it to npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. Trusted publishing can only be set up once the package exists, so the first version is published by hand, by someone with publish rights to the `@synervoz` scope:
+
+```sh
+npm ci && npm run build
+npm publish
+```
