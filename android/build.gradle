@@ -1,7 +1,7 @@
 // React Native Android library module for OpenAILiveToolkit.
 //
 // Provides codegen for the TurboModule spec, the Android platform glue, and the
-// Switchboard SDK + extension AARs. The shared C++ TurboModule (../cpp) is compiled
+// Switchboard SDK + extensions. The shared C++ TurboModule (../cpp) is compiled
 // and registered in the *consuming app's* native build via RN's C++ autolinking —
 // see react-native.config.js (android cxx* keys) and android/CMakeLists.txt. The
 // app therefore links Switchboard through Prefab; this module makes the AARs (and
@@ -14,24 +14,9 @@ def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
-// The AARs come from the public Switchboard SDK builds, like the iOS frameworks.
-// Fetched on the first build; run `npm run android:libraries` to switch builds
-// (see the script for its variables).
-def switchboardPackages = ["SwitchboardSDK", "SwitchboardOnnx", "SwitchboardSileroVAD", "SwitchboardOpenAI"]
-def switchboardLibs = switchboardPackages.collect { file("libs/${it}.aar") }
-
-if (switchboardLibs.any { !it.exists() }) {
-    def fetch = providers.exec {
-        commandLine "bash", file("../scripts/download-android-libraries.sh").absolutePath
-        ignoreExitValue = true
-    }
-    logger.lifecycle(fetch.standardOutput.asText.get())
-    if (fetch.result.get().exitValue != 0) {
-        throw new GradleException(
-            "OpenAILiveToolkit: fetching the Switchboard AARs failed:\n" + fetch.standardError.asText.get()
-        )
-    }
-}
+// From the Synervoz Maven repository, which the app's repositories need too.
+// An app can pick another version with `switchboardVersion` in its root ext.
+def switchboardVersion = safeExtGet("switchboardVersion", "3.3.0")
 
 react {
     // Codegen reads the TurboModule spec from the package's TS sources and
@@ -62,6 +47,7 @@ android {
 repositories {
     mavenCentral()
     google()
+    maven { url "https://s3.amazonaws.com/synervoz-android-maven-repository" }
 }
 
 dependencies {
@@ -69,5 +55,9 @@ dependencies {
 
     // `api` so the Switchboard AARs (and their Prefab packages) are visible to
     // the consuming app's native build, which is where our cpp is compiled.
-    api files(switchboardLibs)
+    api "com.synervoz.switchboard:switchboardsdk:${switchboardVersion}"
+    api "com.synervoz.switchboard.extensions:openai:${switchboardVersion}"
+    // Silero VAD and the Onnx runtime it runs on, for idle mode.
+    api "com.synervoz.switchboard.extensions:onnx:${switchboardVersion}"
+    api "com.synervoz.switchboard.extensions:silerovad:${switchboardVersion}"
 }

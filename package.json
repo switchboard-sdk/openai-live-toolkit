@@ -18,7 +18,6 @@
     "!ios/Frameworks",
     "!ios/Tests",
     "!scripts/test-ios.sh",
-    "!android/libs",
     "!android/build",
     "!**/__tests__",
     "!**/__mocks__",
@@ -38,8 +37,7 @@
     "test:ios": "bash scripts/test-ios.sh",
     "example:install": "npm install && cd example && npm install",
     "prepare": "npm run build",
-    "ios:frameworks": "bash scripts/download-ios-frameworks.sh",
-    "android:libraries": "bash scripts/download-android-libraries.sh"
+    "ios:frameworks": "bash scripts/download-ios-frameworks.sh"
   },
   "keywords": [
     "react-native",
