@@ -104,3 +104,8 @@ Speaker isolation is optional and iOS only. It needs an ai-coustics license key 
 - [Media](docs/media.md) covers playing radio and podcasts alongside the conversation, the model's media tools, and Now Playing.
 - [API reference](docs/api-reference.md) covers the provider, the `useOpenAILiveToolkit()` hook, every export, and the error codes.
 - [Example app](example/README.md) is a complete screen with a transcript, the isolation toggle, and two tools.
+- The [`OpenAI.Live` node](https://docs.switchboard.audio/extensions/openai/openai-live-node/) in the Switchboard docs is what the toolkit runs on. Use it directly in native iOS, Android, macOS and Linux apps.
+
+## Questions
+
+Open an [issue](https://github.com/switchboard-sdk/openai-live-toolkit/issues) for bugs and questions.
