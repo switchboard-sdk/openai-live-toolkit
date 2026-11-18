@@ -27,10 +27,10 @@ install the package, pack a tarball:
 ```sh
 npm install     # must come first: `npm pack` runs `prepare` → `tsc`, so without the
                 # devDependencies it fails with "tsc: command not found" (npm code 127)
-npm pack        # → synervoz-openai-live-toolkit-0.1.0.tgz
+npm pack        # → synervoz-openai-live-toolkit-1.0.0.tgz
 
 cd /path/to/that-app
-npm install /path/to/openai-live-toolkit/synervoz-openai-live-toolkit-0.1.0.tgz
+npm install /path/to/openai-live-toolkit/synervoz-openai-live-toolkit-1.0.0.tgz
 ```
 
 Install the tarball, not `file:../openai-live-toolkit` — a symlinked package
@@ -87,9 +87,12 @@ npm version patch   # or minor / major
 git push && git push --tags
 ```
 
-The [release workflow](.github/workflows/publish.yml) builds the package and publishes it to npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. Trusted publishing can only be set up once the package exists, so the first version is published by hand, by someone with publish rights to the `@synervoz` scope:
+The [release workflow](.github/workflows/publish.yml) builds the package and publishes it to npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. Trusted publishing can only be set up once the package exists, so the first version, 1.0.0, is published by hand, by someone with publish rights to the `@synervoz` scope, after step 2:
 
 ```sh
 npm ci && npm run build
 npm publish
+git tag v1.0.0 && git push --tags
 ```
+
+The workflow skips a version that's already on npm, so tagging it afterwards publishes nothing.

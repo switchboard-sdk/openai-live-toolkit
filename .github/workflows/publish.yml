@@ -22,4 +22,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Node 22's bundled npm predates trusted publishing.
-      - run: npx --yes npm@latest publish
+      - name: Publish
+        run: |
+          spec="$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version")"
+          if npm view "$spec" version > /dev/null 2>&1; then
+            echo "$spec is already on npm"
+            exit 0
+          fi
+          npx --yes npm@latest publish
