@@ -91,6 +91,7 @@ The rest comes with the library:
 - **Background.** While the engine runs, a microphone foreground service with an ongoing notification keeps the conversation going with the screen locked or another app in front. Swiping the app away stops it. The session keeps billing meanwhile, so stop the engine when the conversation ends.
 - **Echo cancellation.** The mic and speaker open for voice communication and the audio mode switches to communication, routed to a connected headset, else the loudspeaker. Playback follows the in-call volume, which the volume keys control during a conversation. The canceller is the device's, so how well it works varies by phone.
 - **Bluetooth** always uses the headset's microphone and call-quality audio (HFP); `microphone` is iOS only.
+- **Offline notice.** `offlineNotice` speaks with the phone's text-to-speech engine. Most phones have one; on a phone without one the notice is silent, and the rest of it (reconnecting, lowering media, telling the model) still works.
 - **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
 
 The emulator works for arm64 and x86_64 images.

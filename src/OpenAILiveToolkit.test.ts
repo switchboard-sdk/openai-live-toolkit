@@ -1,6 +1,13 @@
 jest.mock('./NativeOpenAILiveToolkit')
 
-import { NativeModules, PermissionsAndroid, Platform, Share } from 'react-native'
+import {
+  DeviceEventEmitter,
+  NativeModules,
+  PermissionsAndroid,
+  Platform,
+  Share,
+} from 'react-native'
+import { NETWORK_CHANGED_EVENT } from './androidModule'
 import {
   CONTEXT_INSTRUCTIONS,
   createOpenAILiveToolkit,
@@ -1885,6 +1892,8 @@ describe('Android', () => {
     version.mockRestore()
     delete NativeModules.OpenAILiveToolkitAndroid
     permission.mockRestore()
+    // Toolkits from earlier tests would hear the network events.
+    DeviceEventEmitter.removeAllListeners(NETWORK_CHANGED_EVENT)
   })
 
   it('asks for RECORD_AUDIO through PermissionsAndroid', async () => {
@@ -1964,43 +1973,141 @@ describe('Android', () => {
     expect(() => toolkit.stop()).toThrow(OpenAILiveError)
     expect(audioSession.stopAudioSession).not.toHaveBeenCalled()
   })
-  describe('idle mode', () => {
-    // One per setIdleTimer call; the native module resolves a replaced timer with false.
-    let timers: ((fired: boolean) => void)[]
+  describe('native timers', () => {
+    // Pending ones by id; the native module resolves a cancelled timer with false.
+    let timers: Map<number, { ms: number; resolve: (fired: boolean) => void }>
 
     beforeEach(() => {
-      timers = []
-      audioSession.setIdleTimer = jest.fn(
-        () => new Promise<boolean>((resolve) => timers.push(resolve))
+      timers = new Map()
+      audioSession.setTimer = jest.fn(
+        (id: number, ms: number) =>
+          new Promise<boolean>((resolve) => timers.set(id, { ms, resolve }))
       )
-      audioSession.cancelIdleTimer = jest.fn()
+      audioSession.cancelTimer = jest.fn((id: number) => {
+        timers.get(id)?.resolve(false)
+        timers.delete(id)
+      })
     })
 
-    async function live() {
-      const toolkit = await running({ ...CREDS, idleTimeoutMs: 10_000 })
-      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-      return toolkit
+    async function fire(ms: number) {
+      const [id, timer] = [...timers].find(([, t]) => t.ms === ms) ?? []
+      expect(timer).toBeDefined()
+      timers.delete(id!)
+      timer!.resolve(true)
+      await flush()
     }
 
-    it('counts down natively, since JS timers stop in the background', async () => {
-      await live()
-      expect(audioSession.setIdleTimer).toHaveBeenLastCalledWith(10_000)
-      timers[timers.length - 1](true)
-      await flush()
-      expect(commandFor('endSession')).toBeDefined()
+    describe('idle mode', () => {
+      async function live() {
+        const toolkit = await running({ ...CREDS, idleTimeoutMs: 10_000 })
+        emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+        return toolkit
+      }
+
+      it('counts down natively, since JS timers stop in the background', async () => {
+        await live()
+        await fire(10_000)
+        expect(commandFor('endSession')).toBeDefined()
+      })
+
+      it('ignores a timer that was cancelled', async () => {
+        await live()
+        emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'hi' })
+        expect(audioSession.cancelTimer).toHaveBeenCalled()
+        await flush()
+        expect(commandFor('endSession')).toBeUndefined()
+      })
+
+      it('cancels the native timer on stop', async () => {
+        const toolkit = await live()
+        toolkit.stop()
+        expect(timers.size).toBe(0)
+      })
     })
 
-    it('ignores a timer that was replaced', async () => {
-      await live()
-      timers[timers.length - 1](false)
-      await flush()
-      expect(commandFor('endSession')).toBeUndefined()
+    describe('offline notice', () => {
+      beforeEach(() => {
+        audioSession.isNetworkAvailable = jest.fn(() => true)
+        audioSession.watchNetwork = jest.fn()
+        audioSession.synthesizeSpeech = jest.fn().mockResolvedValue('/mock/caches/tts.wav')
+      })
+
+      it("watches the network and speaks with the device's text-to-speech", async () => {
+        await running({ ...CREDS, offlineNotice: true })
+        expect(audioSession.watchNetwork).toHaveBeenCalled()
+        DeviceEventEmitter.emit(NETWORK_CHANGED_EVENT, false)
+        await fire(3_000)
+        expect(audioSession.synthesizeSpeech).toHaveBeenCalledWith(
+          "I've lost the connection. I'll be back when it returns.",
+          'en-US'
+        )
+        expect(native.synthesizeSpeech).not.toHaveBeenCalled()
+        const notice = commandsFor('load').find((c) => c.params.objectURI === 'noticePlayerNode')
+        expect(notice.params.params).toEqual({ audioFilePath: '/mock/caches/tts.wav' })
+      })
+
+      it('says nothing for a short drop', async () => {
+        await running({ ...CREDS, offlineNotice: true })
+        DeviceEventEmitter.emit(NETWORK_CHANGED_EVENT, false)
+        DeviceEventEmitter.emit(NETWORK_CHANGED_EVENT, true)
+        expect(timers.size).toBe(0)
+        expect(audioSession.synthesizeSpeech).not.toHaveBeenCalled()
+      })
+    })
+  })
+
+  describe('logs', () => {
+    const DEVICE = 'app Example 1.0 (1), com.example, Android 16 (API 36), Google Pixel 6a'
+
+    beforeEach(() => {
+      audioSession.getConstants = jest.fn(() => ({
+        documentsPath: '/mock/documents',
+        cachePath: '/mock/caches',
+        device: DEVICE,
+      }))
+      audioSession.zipFiles = jest.fn().mockResolvedValue('')
+      audioSession.shareFile = jest.fn().mockResolvedValue(undefined)
     })
 
-    it('cancels the native timer on stop', async () => {
-      const toolkit = await live()
-      toolkit.stop()
-      expect(audioSession.cancelIdleTimer).toHaveBeenCalled()
+    it('starts the log with the app and device', () => {
+      initialized({ ...CREDS, logFile: true })
+      expect(logged()).toContain(DEVICE)
+    })
+
+    it('zips the diagnostic recordings with the log and shares the zip', async () => {
+      const toolkit = await running({ ...CREDS, logFile: true, diagnosticAudioSeconds: 60 })
+      scriptNative((req) =>
+        req.params?.actionName === 'dump'
+          ? makeRpcResponse(`${req.params.params.filePath}_recording.wav`)
+          : makeRpcResponse(null)
+      )
+      await toolkit.shareLogs()
+      expect(audioSession.zipFiles).toHaveBeenCalledWith(
+        [
+          '/mock/caches/openai-live-toolkit-log.txt',
+          '/mock/caches/mic_recording.wav',
+          '/mock/caches/heard_recording.wav',
+          '/mock/caches/output_recording.wav',
+          '/mock/caches/labels.txt',
+        ].join('\n'),
+        '/mock/caches/openai-live-toolkit-logs.zip'
+      )
+      expect(native.zipFiles).not.toHaveBeenCalled()
+      expect(audioSession.shareFile).toHaveBeenCalledWith(
+        '/mock/caches/openai-live-toolkit-logs.zip'
+      )
+    })
+
+    it("rejects when the zip can't be made", async () => {
+      audioSession.zipFiles.mockResolvedValue('disk full')
+      const toolkit = await running({ ...CREDS, logFile: true, diagnosticAudioSeconds: 60 })
+      scriptNative((req) =>
+        req.params?.actionName === 'dump'
+          ? makeRpcResponse(`${req.params.params.filePath}_recording.wav`)
+          : makeRpcResponse(null)
+      )
+      await expect(toolkit.shareLogs()).rejects.toThrow("Couldn't zip the logs: disk full")
+      expect(audioSession.shareFile).not.toHaveBeenCalled()
     })
   })
 })

@@ -17,6 +17,8 @@ import com.facebook.react.bridge.ReactMethod
 import java.io.File
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Android platform glue for the C++ TurboModule, called from OpenAILiveToolkit.ts.
@@ -35,13 +37,27 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     mapOf(
       "documentsPath" to reactContext.filesDir.absolutePath,
       "cachePath" to reactContext.cacheDir.absolutePath,
+      "device" to describeDevice(),
     )
 
   private val audioManager: AudioManager
     get() = reactContext.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
   private val mainHandler = Handler(Looper.getMainLooper())
-  private var idleTimer: Pair<Runnable, Promise>? = null
+  // On the main looper.
+  private val timers = mutableMapOf<Int, Pair<Runnable, Promise>>()
+
+  private val speech = OpenAILiveToolkitSpeech(reactContext.applicationContext)
+  private val network = OpenAILiveToolkitNetwork(reactContext.applicationContext) { available ->
+    reactContext.emitDeviceEvent(NETWORK_CHANGED_EVENT, available)
+  }
+
+  override fun invalidate() {
+    network.stop()
+    speech.shutdown()
+    mainHandler.post { timers.keys.toList().forEach(::cancelPendingTimer) }
+    super.invalidate()
+  }
 
   /** Start the foreground service and the communication route. Call with the mic granted. */
   @ReactMethod
@@ -128,33 +144,72 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
   }
 
   /**
-   * Resolves true after [ms], or false once replaced or cancelled. Idle mode counts down here
+   * Resolves true after [ms], or false once cancelled. The toolkit's timers count down here
    * because React Native stops JS timers while the app is in the background.
    */
   @ReactMethod
-  fun setIdleTimer(ms: Double, promise: Promise) {
+  fun setTimer(id: Double, ms: Double, promise: Promise) {
     mainHandler.post {
-      cancelPendingIdleTimer()
+      val key = id.toInt()
       val runnable = Runnable {
-        idleTimer = null
+        timers.remove(key)
         promise.resolve(true)
       }
-      idleTimer = runnable to promise
+      timers[key] = runnable to promise
       mainHandler.postDelayed(runnable, ms.toLong())
     }
   }
 
   @ReactMethod
-  fun cancelIdleTimer() {
-    mainHandler.post { cancelPendingIdleTimer() }
+  fun cancelTimer(id: Double) {
+    mainHandler.post { cancelPendingTimer(id.toInt()) }
   }
 
-  // On the main looper, like everything that touches idleTimer.
-  private fun cancelPendingIdleTimer() {
-    val (runnable, promise) = idleTimer ?: return
-    idleTimer = null
+  // On the main looper, like everything that touches timers.
+  private fun cancelPendingTimer(key: Int) {
+    val (runnable, promise) = timers.remove(key) ?: return
     mainHandler.removeCallbacks(runnable)
     promise.resolve(false)
+  }
+
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  fun isNetworkAvailable(): Boolean = network.isAvailable()
+
+  /** Emit [NETWORK_CHANGED_EVENT] whenever [isNetworkAvailable] changes. */
+  @ReactMethod
+  fun watchNetwork() {
+    network.watch()
+  }
+
+  /** Resolves to a WAV file of [text] said in [language], such as "en-US", or "". */
+  @ReactMethod
+  fun synthesizeSpeech(text: String, language: String, promise: Promise) {
+    speech.synthesize(text, language) { path -> promise.resolve(path) }
+  }
+
+  /**
+   * Pack the newline-separated [paths] into a zip at [zipPath], in a folder named after it.
+   * Resolves to "" when done, or why not.
+   */
+  @ReactMethod
+  fun zipFiles(paths: String, zipPath: String, promise: Promise) {
+    Thread {
+      val zip = File(zipPath)
+      try {
+        zip.delete()
+        ZipOutputStream(zip.outputStream().buffered()).use { out ->
+          paths.split('\n').filter { it.isNotEmpty() }.map(::File).forEach { file ->
+            out.putNextEntry(ZipEntry("${zip.nameWithoutExtension}/${file.name}"))
+            file.inputStream().use { it.copyTo(out) }
+            out.closeEntry()
+          }
+        }
+        promise.resolve("")
+      } catch (e: Exception) {
+        zip.delete()
+        promise.resolve(e.message ?: e.toString())
+      }
+    }.start()
   }
 
   /** Open the share sheet with [path], a file in the app's cache directory. */
@@ -164,7 +219,7 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
       val context = reactContext.applicationContext
       val uri = FileProvider.getUriForFile(context, "${context.packageName}.openailivetoolkit.files", File(path))
       val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
+        type = if (path.endsWith(".zip")) "application/zip" else "text/plain"
         putExtra(Intent.EXTRA_STREAM, uri)
         // On the intent's clip data, the read grant carries over to the app picked in the chooser.
         clipData = ClipData.newRawUri(null, uri)
@@ -216,8 +271,28 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
     }
   }
 
+  /** The app, its version and build, the Android version and the device model, as the iOS log has them. */
+  private fun describeDevice(): String {
+    val context = reactContext.applicationContext
+    val packageManager = context.packageManager
+    @Suppress("DEPRECATION")
+    val info = packageManager.getPackageInfo(context.packageName, 0)
+    val build = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      info.longVersionCode
+    } else {
+      @Suppress("DEPRECATION")
+      info.versionCode.toLong()
+    }
+    val name = packageManager.getApplicationLabel(context.applicationInfo)
+    return "app $name ${info.versionName ?: "?"} ($build), ${context.packageName}, " +
+      "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), ${Build.MANUFACTURER} ${Build.MODEL}"
+  }
+
   companion object {
     const val NAME = "OpenAILiveToolkitAndroid"
+
+    /** Device event with whether the network is available, after [watchNetwork]. */
+    const val NETWORK_CHANGED_EVENT = "OpenAILiveToolkitNetworkChanged"
 
     private const val ROUTE_TIMEOUT_MS = 3000L
 

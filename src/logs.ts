@@ -1,6 +1,7 @@
 import { Platform, Share } from 'react-native'
 import NativeOpenAILiveToolkit from './NativeOpenAILiveToolkit'
 import { androidModule } from './androidModule'
+import { zipFiles } from './platform'
 
 /** Absolute path to the app's documents directory. */
 export function documentsPath(): string {
@@ -21,6 +22,11 @@ export function cachePath(): string {
 /** Write the SDK's log, and the toolkit's lines in it, to a file in the caches directory too. */
 export function startLogFile(): void {
   NativeOpenAILiveToolkit.startLogFile(cachePath())
+  // So every shared log says which build and device it came from. iOS logs it natively.
+  const device = Platform.OS === 'android' ? androidModule()?.getConstants?.().device : undefined
+  if (device) {
+    NativeOpenAILiveToolkit.log(device)
+  }
 }
 
 // Hears each line logged from JS, for the recordings' labels.
@@ -39,26 +45,27 @@ export function log(message: string): void {
 
 /**
  * Open the share sheet with the log file. It holds the SDK's log and the toolkit's events,
- * transcript included, from the last few MB of use. iOS: with `recordings`, a zip of the log and them.
+ * transcript included, from the last few MB of use. With `recordings`, a zip of the log and them.
  */
 export async function shareLogs(recordings: string[] = []): Promise<void> {
   const path = NativeOpenAILiveToolkit.exportLogFile()
   if (path === '') {
     throw new Error('No log: initialize the toolkit with logFile on.')
   }
+  const file = recordings.length === 0 ? path : await zipLogs(path, recordings)
   const android = Platform.OS === 'android' ? androidModule() : undefined
   if (android) {
-    await android.shareFile(path)
+    await android.shareFile(file)
     return
   }
-  if (recordings.length === 0) {
-    await Share.share({ url: `file://${path}` })
-    return
-  }
+  await Share.share({ url: `file://${file}` })
+}
+
+async function zipLogs(logPath: string, recordings: string[]): Promise<string> {
   const zip = `${cachePath()}/openai-live-toolkit-logs.zip`
-  const failure = NativeOpenAILiveToolkit.zipFiles([path, ...recordings].join('\n'), zip)
+  const failure = await zipFiles([logPath, ...recordings].join('\n'), zip)
   if (failure) {
     throw new Error(`Couldn't zip the logs: ${failure}`)
   }
-  await Share.share({ url: `file://${zip}` })
+  return zip
 }

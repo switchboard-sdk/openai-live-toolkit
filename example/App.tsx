@@ -106,9 +106,13 @@ export default function App(): React.JSX.Element {
         mixWithOthers
         // The Radio choice, and stations the model can play.
         media
-        // A testing app: keep the conversation in the log, for Share logs.
+        // Say so when the connection is lost, and when it's back.
+        offlineNotice
+        // A testing app: keep the conversation in the log, with the last minute of audio, for
+        // Share logs.
         logFile
-        logConversation>
+        logConversation
+        diagnosticAudioSeconds={60}>
         <Screen />
       </OpenAILiveToolkitProvider>
     </SafeAreaProvider>
