@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1450" height="790" viewBox="0 0 1450 790" font-family="Inter, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#262626"/>
+    </marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#008941"/>
+    </marker>
+    <style>
+      .title { font-size: 22px; font-weight: 700; fill: #171717; }
+      .legend { font-size: 13px; fill: #404040; }
+      .group { font-size: 12px; font-weight: 700; }
+      .name { font-size: 14px; font-weight: 700; text-anchor: middle; }
+      .sub { font-size: 12.5px; text-anchor: middle; }
+      .code { font-family: 'SF Mono', Menlo, Consolas, monospace; }
+      .label { font-size: 12px; fill: #404040; }
+      .note { font-size: 12.5px; fill: #6E6E6E; }
+      .rt { stroke: #262626; stroke-width: 2; fill: none; }
+      .dl { stroke: #262626; stroke-width: 1.8; fill: none; stroke-dasharray: 1.5 4.5; stroke-linecap: round; }
+      .su { stroke: #008941; stroke-width: 2.5; fill: none; stroke-dasharray: 9 5; }
+      .sb-group { fill: #E5F3E8; stroke: #008941; stroke-width: 1.5; }
+      .sb-node { fill: #CBE7D1; stroke: #008941; stroke-width: 1.5; }
+      .sb-text { fill: #00481E; }
+      .app-group { fill: #F3F7FF; stroke: #3B6FD8; stroke-width: 1.5; }
+      .app-node { fill: #E8F0FE; stroke: #3B6FD8; stroke-width: 1.5; }
+      .app-text { fill: #0B1F44; }
+      .oai-group { fill: #F5F5F5; stroke: #262626; stroke-width: 1.5; }
+      .oai-node { fill: #E5E5E5; stroke: #262626; stroke-width: 1.5; }
+      .oai-text { fill: #171717; }
+    </style>
+  </defs>
+
+  <rect width="1450" height="790" fill="#FFFFFF"/>
+
+  <!-- Title and legend -->
+  <text x="40" y="48" class="title">How openai-live-toolkit works</text>
+  <rect x="40" y="76" width="14" height="14" rx="3" class="sb-node"/>
+  <text x="62" y="88" class="legend">Switchboard</text>
+  <rect x="160" y="76" width="14" height="14" rx="3" class="app-node"/>
+  <text x="182" y="88" class="legend">Your app</text>
+  <rect x="262" y="76" width="14" height="14" rx="3" class="oai-node"/>
+  <text x="284" y="88" class="legend">OpenAI</text>
+  <line x1="390" y1="83" x2="430" y2="83" class="rt"/>
+  <text x="440" y="88" class="legend">Real-time path</text>
+  <line x1="560" y1="83" x2="600" y2="83" class="dl"/>
+  <text x="610" y="88" class="legend">Delegated work and tool calls</text>
+  <line x1="820" y1="83" x2="860" y2="83" class="su"/>
+  <text x="870" y="88" class="legend">Session setup, each time a session opens (WebRTC)</text>
+
+  <!-- Switchboard backend -->
+  <rect x="820" y="128" width="200" height="74" rx="8" class="sb-node"/>
+  <text x="920" y="158" class="name sb-text">Switchboard backend</text>
+  <text x="920" y="178" class="sub sb-text">sets up each session</text>
+  <text x="920" y="194" class="sub sb-text">with the app's OpenAI key</text>
+
+  <!-- Phone -->
+  <rect x="190" y="230" width="590" height="480" rx="14" fill="none" stroke="#A3A3A3" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="206" y="252" class="group" fill="#6E6E6E">Phone</text>
+
+  <!-- Switchboard on the phone -->
+  <rect x="210" y="265" width="550" height="210" rx="10" class="sb-group"/>
+  <text x="226" y="287" class="group sb-text">Switchboard · openai-live-toolkit and the SDK</text>
+  <rect x="230" y="302" width="240" height="95" rx="8" class="sb-node"/>
+  <text x="350" y="330" class="name sb-text">Audio engine</text>
+  <text x="350" y="350" class="sub sb-text">echo cancellation</text>
+  <text x="350" y="368" class="sub sb-text">optional speaker isolation (iOS)</text>
+  <text x="350" y="386" class="sub sb-text">voice detection for idle mode</text>
+  <rect x="540" y="307" width="200" height="68" rx="8" class="sb-node"/>
+  <text x="640" y="336" class="name sb-text code">OpenAI.Live</text>
+  <text x="640" y="357" class="sub sb-text">WebRTC or WebSocket</text>
+  <rect x="230" y="413" width="510" height="48" rx="8" class="sb-node"/>
+  <text x="485" y="433" class="name sb-text">Toolkit provider and hooks</text>
+  <text x="485" y="451" class="sub sb-text">routes tool calls, groups the transcript, reconnects after idle and network drops</text>
+
+  <!-- Application logic: your app -->
+  <rect x="210" y="530" width="550" height="160" rx="10" class="app-group"/>
+  <text x="226" y="552" class="group app-text">Application logic · your app</text>
+  <rect x="230" y="575" width="240" height="85" rx="8" class="app-node"/>
+  <text x="350" y="611" class="name app-text">UI</text>
+  <text x="350" y="632" class="sub app-text">transcript and state</text>
+  <rect x="540" y="575" width="200" height="85" rx="8" class="app-node"/>
+  <text x="640" y="611" class="name app-text">Tool handlers</text>
+  <text x="640" y="632" class="sub app-text code">useTool</text>
+
+  <!-- User -->
+  <rect x="30" y="314" width="120" height="70" rx="35" fill="#FFFFFF" stroke="#6E6E6E" stroke-width="1.5"/>
+  <text x="90" y="354" class="name" fill="#171717">User</text>
+
+  <!-- OpenAI -->
+  <rect x="1065" y="230" width="360" height="480" rx="14" class="oai-group"/>
+  <text x="1081" y="252" class="group oai-text">OpenAI</text>
+  <rect x="1110" y="307" width="250" height="85" rx="8" class="oai-node"/>
+  <text x="1235" y="344" class="name oai-text code">gpt-live-1</text>
+  <text x="1235" y="365" class="sub oai-text">voice model</text>
+  <rect x="1100" y="575" width="130" height="85" rx="8" class="oai-node"/>
+  <text x="1165" y="603" class="name oai-text">Delegate</text>
+  <text x="1165" y="622" class="sub oai-text code">delegateModel</text>
+  <text x="1165" y="640" class="sub oai-text">default gpt-5.5</text>
+  <rect x="1275" y="575" width="130" height="85" rx="8" class="oai-node"/>
+  <text x="1340" y="603" class="name oai-text">Hosted tools</text>
+  <text x="1340" y="622" class="sub oai-text">web search</text>
+  <text x="1340" y="640" class="sub oai-text">opt-in</text>
+
+  <!-- Real-time path -->
+  <line x1="152" y1="349" x2="228" y2="349" class="rt" marker-start="url(#dark)" marker-end="url(#dark)"/>
+  <text x="190" y="339" class="label" text-anchor="middle">voice</text>
+  <line x1="472" y1="349" x2="538" y2="349" class="rt" marker-start="url(#dark)" marker-end="url(#dark)"/>
+  <text x="505" y="339" class="label" text-anchor="middle">audio</text>
+  <line x1="742" y1="349" x2="1108" y2="349" class="rt" marker-start="url(#dark)" marker-end="url(#dark)"/>
+  <text x="925" y="339" class="label" text-anchor="middle">audio, events and tool calls</text>
+  <text x="925" y="369" class="label" text-anchor="middle">one live session</text>
+  <line x1="640" y1="377" x2="640" y2="411" class="rt" marker-start="url(#dark)" marker-end="url(#dark)"/>
+  <line x1="440" y1="463" x2="440" y2="573" class="rt" marker-end="url(#dark)"/>
+  <text x="448" y="512" class="label">transcript, activity</text>
+
+  <!-- Session setup -->
+  <path d="M640,305 V165 H818" class="su" marker-start="url(#green)" marker-end="url(#green)"/>
+  <text x="729" y="155" class="label" text-anchor="middle">offer and config / answer</text>
+  <path d="M1022,165 H1300 V305" class="su" marker-end="url(#green)"/>
+  <text x="1160" y="155" class="label" text-anchor="middle">creates the session</text>
+
+  <!-- Delegated work and tool calls -->
+  <line x1="1145" y1="394" x2="1145" y2="573" class="dl" marker-end="url(#dark)"/>
+  <text x="1137" y="480" class="label" text-anchor="end">delegated</text>
+  <text x="1137" y="496" class="label" text-anchor="end">work</text>
+  <line x1="1190" y1="573" x2="1190" y2="394" class="dl" marker-end="url(#dark)"/>
+  <text x="1198" y="480" class="label">tool calls,</text>
+  <text x="1198" y="496" class="label">results</text>
+  <line x1="1232" y1="617" x2="1273" y2="617" class="dl" marker-start="url(#dark)" marker-end="url(#dark)"/>
+  <line x1="640" y1="463" x2="640" y2="573" class="dl" marker-start="url(#dark)" marker-end="url(#dark)"/>
+  <text x="648" y="504" class="label">tool calls</text>
+  <text x="648" y="520" class="label">and results</text>
+
+  <!-- Notes -->
+  <text x="40" y="738" class="note">GPT-Live hands work to the delegate. The delegate's tool calls reach the phone over the live session; the toolkit runs the matching useTool handler and sends the result back.</text>
+  <text x="40" y="757" class="note">Over WebRTC, the Switchboard backend sets up each session with your session config, including after idle mode and reconnects.</text>
+  <text x="40" y="776" class="note">With WebSocket, the app connects to OpenAI with its own OpenAI key, and the backend isn't used for the session.</text>
+</svg>
