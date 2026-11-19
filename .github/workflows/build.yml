@@ -25,10 +25,11 @@ jobs:
     name: Package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          package-manager-cache: false
       - run: npm ci
       - run: npm run lint
       - run: npm pack
@@ -47,7 +48,7 @@ jobs:
             status=1
           fi
           exit $status
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: package
           path: synervoz-openai-live-toolkit-*.tgz
@@ -61,16 +62,17 @@ jobs:
       run:
         working-directory: example
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          package-manager-cache: false
       # The runner image has NDK 29, which the example needs.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: package
       - name: Install the toolkit from the tarball
@@ -92,11 +94,12 @@ jobs:
       run:
         working-directory: example
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - uses: actions/download-artifact@v4
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
         with:
           name: package
       - name: Install the toolkit from the tarball
@@ -106,7 +109,14 @@ jobs:
           cp .env.example .env
       - run: bundle install
       # Downloads the Switchboard frameworks too, through the podspec's prepare_command.
-      - run: bundle exec pod install
+      # Retried, as it downloads a lot from scratch and a dropped connection fails it.
+      - run: |
+          for attempt in 1 2 3; do
+            bundle exec pod install && exit 0
+            echo "::warning::pod install failed (attempt $attempt of 3)"
+            sleep 15
+          done
+          exit 1
         working-directory: example/ios
       # Release bundles the JS too. arm64 only, as SwitchboardOpenAI has no x86_64 simulator slice.
       - run: >
