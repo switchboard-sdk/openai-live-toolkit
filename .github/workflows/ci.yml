@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +21,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
+      - run: npm ci
       - run: npm run typecheck
 
   test:
@@ -29,6 +32,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
+      - run: npm ci
       # Runs the TS unit suite and enforces the coverage thresholds in jest.config.js.
       - run: npm run test:cov
+
+  ios-test:
+    name: XCTest
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      IOS_SIMULATOR: iPhone 17
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm run test:ios

@@ -37,6 +37,10 @@ Install the tarball, not `file:../openai-live-toolkit` — a symlinked package
 breaks Metro resolution and duplicates React. The tarball is a snapshot, so re-pack
 and re-install after every change, or the app keeps building against the old API.
 
+CI does the same on every PR and nightly: [`build.yml`](.github/workflows/build.yml)
+packs the toolkit and builds the example app against the tarball for Android and iOS,
+from scratch with no caches.
+
 ## Tests
 
 Run the unit suite with:
@@ -62,6 +66,7 @@ It needs only Xcode: the test project builds the code under test without React N
 or the Switchboard frameworks, so that code lives in units of its own rather than in
 `OpenAILiveToolkitModuleProvider.mm` or `NativeOpenAILiveToolkit.cpp`. Add new tests and
 units to `ios/Tests/OpenAILiveToolkitTests.xcodeproj`, which also runs them from Xcode.
+CI runs the suite too.
 
 ## Release
 

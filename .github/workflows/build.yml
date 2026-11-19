@@ -1,0 +1,121 @@
+name: Build
+
+# Builds the toolkit the way a new developer gets it: a fresh machine, no caches, and the
+# example app installing the packed tarball like an app outside this repo would.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Nightly too: the toolkit gets the latest Switchboard SDK 3.3.0 development build, which
+  # changes without a change here.
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run lint
+      - run: npm pack
+      - name: Check the tarball
+        run: |
+          files="$(tar -tzf synervoz-openai-live-toolkit-*.tgz | sed 's|^package/||')"
+          status=0
+          # The example app builds from src/, so nothing else checks the compiled JS and types.
+          for f in dist/index.js dist/index.d.ts; do
+            grep -qxF "$f" <<<"$files" || { echo "::error::Missing $f"; status=1; }
+          done
+          unwanted="$(grep -E '^ios/(Tests|Frameworks)/|\.(test|spec)\.|__mocks__/|test-helpers|test-ios\.sh|(^|/)\.' <<<"$files" || true)"
+          if [ -n "$unwanted" ]; then
+            echo "::error::Packed files that shouldn't ship:"
+            echo "$unwanted"
+            status=1
+          fi
+          exit $status
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: synervoz-openai-live-toolkit-*.tgz
+          if-no-files-found: error
+
+  example-android:
+    name: Example app (Android)
+    needs: package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The runner image has NDK 29, which the example needs.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+      - name: Install the toolkit from the tarball
+        run: |
+          npm pkg set "dependencies.@synervoz/openai-live-toolkit=file:$(echo ../synervoz-openai-live-toolkit-*.tgz)"
+          npm install
+          cp .env.example .env
+      # Release bundles the JS too. One architecture is enough to check that it builds.
+      - run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+        working-directory: example/android
+
+  example-ios:
+    name: Example app (iOS)
+    needs: package
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+    defaults:
+      run:
+        working-directory: example
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+      - name: Install the toolkit from the tarball
+        run: |
+          npm pkg set "dependencies.@synervoz/openai-live-toolkit=file:$(echo ../synervoz-openai-live-toolkit-*.tgz)"
+          npm install
+          cp .env.example .env
+      - run: bundle install
+      # Downloads the Switchboard frameworks too, through the podspec's prepare_command.
+      - run: bundle exec pod install
+        working-directory: example/ios
+      # Release bundles the JS too. arm64 only, as SwitchboardOpenAI has no x86_64 simulator slice.
+      - run: >
+          xcodebuild build -quiet
+          -workspace OpenAILiveToolkitExample.xcworkspace
+          -scheme OpenAILiveToolkitExample
+          -configuration Release
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          ARCHS=arm64
+          CODE_SIGNING_ALLOWED=NO
+        working-directory: example/ios
