@@ -145,8 +145,8 @@ export interface OpenAILiveToolkitInitializeOptions {
   /**
    * When the network is gone for a few seconds, or a session can't be reached for longer, say so
    * with the device's voice (on Android, its text-to-speech engine if it has one), and again once
-   * it's back; reconnect as soon as the network is back and play media that stopped meanwhile
-   * again. The model is told how long it was offline. Media is lowered while the device speaks.
+   * it's back, when media that stopped meanwhile plays again. The model is told how long it was
+   * offline. Media is lowered while the device speaks.
    * `true` says it in English. Off by default.
    */
   offlineNotice?: boolean | OfflineNotice
@@ -308,6 +308,12 @@ const MIX_RESTORE_MS = 500
 // The network gone this long, or a session down this long, and the user is told.
 const OFFLINE_GRACE_MS = 3_000
 const SESSION_DOWN_MS = 10_000
+// How long an error with no session up waits for the sessionDisconnected that says whether the node
+// tries again. One the node reports without disconnecting, as for a missing app, stops it.
+const DISCONNECT_WAIT_MS = 1_000
+// Tries in a row that fail with the network up before the failure is fatal, though the node keeps
+// trying.
+const FAILED_TRIES_FATAL = 3
 // The longest a notice may take.
 const NOTICE_TIMEOUT_MS = 15_000
 const DEFAULT_OFFLINE_NOTICE: OfflineNotice = {
@@ -636,10 +642,14 @@ export function createOpenAILiveToolkit() {
     vad: new Set(),
   }
   const errorListeners = new Set<OpenAILiveErrorListener>()
-  // Whether a session is currently up. Decides whether a session failure is fatal:
-  // one that arrives with no session is what's keeping it down; one during a live
-  // session was survivable.
+  // Whether a session is currently up. A session failure during one was survivable.
   let sessionLive = false
+  // A session failure with no session up, until its sessionDisconnected says whether the node
+  // tries again.
+  let heldFailure: { message: string; details: Record<string, unknown> } | null = null
+  let cancelHeldFailure: (() => void) | null = null
+  // Tries in a row the node made again that failed with the network up.
+  let failedTries = 0
 
   // Idle mode. 0 is off.
   let idleTimeoutMs = 0
@@ -726,6 +736,66 @@ export function createOpenAILiveToolkit() {
       return androidModule()?.isOnSpeaker() ?? true
     }
     return outputPort === null || outputPort === 'Speaker'
+  }
+
+  /** Holds a session failure with no session up until the sessionDisconnected that follows it. */
+  function holdFailure(message: string, details: Record<string, unknown>): void {
+    // The later failure is the one the sessionDisconnected follows.
+    const earlier = takeHeldFailure()
+    if (earlier) {
+      emitError('SESSION_FAILED', earlier.message, false, earlier.details)
+    }
+    heldFailure = { message, details }
+    cancelHeldFailure = backgroundTimeout(flushHeldFailure, DISCONNECT_WAIT_MS)
+  }
+
+  function takeHeldFailure(): typeof heldFailure {
+    cancelHeldFailure?.()
+    cancelHeldFailure = null
+    const failure = heldFailure
+    heldFailure = null
+    return failure
+  }
+
+  /** Reports a held failure that no sessionDisconnected followed, which stopped the node. */
+  function flushHeldFailure(): void {
+    const failure = takeHeldFailure()
+    if (failure) {
+      emitError('SESSION_FAILED', failure.message, true, failure.details)
+    }
+  }
+
+  /**
+   * A session that didn't come up. Fatal once the node stops trying, as for a refused session or
+   * wrong credentials, or after {@link FAILED_TRIES_FATAL} tries in a row with the network up.
+   * Tries while offline are only logged: the offline notice covers them.
+   */
+  function sessionFailed(reason: unknown, reconnecting: unknown): void {
+    const failure = takeHeldFailure()
+    // The node keeps a fork it couldn't reach, and starts a new session after a refused one.
+    if (reason !== 'unreachable') {
+      forking = false
+    }
+    if (reconnecting === false) {
+      stopWatchingOffline()
+      emitError(
+        'SESSION_FAILED',
+        failure?.message ?? 'The session was refused.',
+        true,
+        failure?.details
+      )
+      return
+    }
+    // A live session that dropped was reported when it failed.
+    if (!failure) {
+      return
+    }
+    if (reason === 'unreachable') {
+      log(`session unreachable, trying again: ${failure.message}`)
+      return
+    }
+    failedTries++
+    emitError('SESSION_FAILED', failure.message, failedTries >= FAILED_TRIES_FATAL, failure.details)
   }
 
   const host: FeatureHost = {
@@ -1473,13 +1543,7 @@ export function createOpenAILiveToolkit() {
       return
     }
     announceBack()
-    // Sooner than the node's reconnect, whose wait grows to a minute while offline.
-    if (!sessionLive && !idle) {
-      const fork = idleTimeoutMs > 0 || continueConversation ? lastSessionId : null
-      forking = fork !== null
-      log(forking ? `network back: forking ${fork}` : 'network back: new session')
-      client?.callAction(LIVE_NODE, 'startSession', fork ? { forkSessionId: fork } : {})
-    }
+    // The node reconnects by itself, trying every 2 s while offline.
     features.forEach((f) => f.networkBack())
   }
 
@@ -1712,6 +1776,8 @@ export function createOpenAILiveToolkit() {
     running = false
     syncVoiceLevels()
     sessionLive = false
+    takeHeldFailure()
+    failedTries = 0
     resetIdle()
     // Otherwise kept for the next start to fork.
     if (!continueConversation) {
@@ -1952,6 +2018,12 @@ export function createOpenAILiveToolkit() {
           notesTold.clear()
         }
         forking = false
+        failedTries = 0
+        // An error it came up after didn't stop it.
+        const failure = takeHeldFailure()
+        if (failure) {
+          emitError('SESSION_FAILED', failure.message, false, failure.details)
+        }
         syncOtherAppsDuck()
         syncToolsNote()
         features.forEach((f) => f.sessionStarted(continued))
@@ -1987,32 +2059,38 @@ export function createOpenAILiveToolkit() {
       }
       case 'sessionStarting':
       case 'sessionDisconnected':
-      case 'sessionClosed':
+      case 'sessionClosed': {
         flushTranscript()
         log(`${event.name}${event.data ? ` ${JSON.stringify(event.data)}` : ''}`)
         sessionLive = false
         syncOtherAppsDuck()
-        if (event.name !== 'sessionStarting' && running && !idle) {
+        if (event.name === 'sessionStarting') {
+          break
+        }
+        const { reason, reconnecting } = (event.data ?? {}) as {
+          reason?: unknown
+          reconnecting?: unknown
+        }
+        if (event.name === 'sessionDisconnected') {
+          sessionFailed(reason, reconnecting)
+        }
+        // A node that stopped trying won't be back by itself.
+        if (running && !idle && reconnecting !== false) {
           watchOffline(SESSION_DOWN_MS)
         }
         break
+      }
       case 'error': {
-        const data = event.data as { type?: string; message?: string } | undefined
-        const message = data?.message
-        // A fork that fails, refused or over WebRTC as a failed connection, isn't fatal: the node
-        // starts a new session instead.
-        const forkFailed = forking && !sessionLive
-        if (forkFailed) {
-          forking = false
+        const data = event.data as { type?: string; code?: string; message?: string } | undefined
+        const message = data?.message?.trim()
+          ? data.message + appRefusedHint(data.type, data.message, demoCredentials)
+          : `Session error: ${event.raw}`
+        const details = { type: data?.type, code: data?.code, raw }
+        if (sessionLive) {
+          emitError('SESSION_FAILED', message, false, details)
+        } else {
+          holdFailure(message, details)
         }
-        emitError(
-          'SESSION_FAILED',
-          message?.trim()
-            ? message + appRefusedHint(data?.type, message, demoCredentials)
-            : `Session error: ${event.raw}`,
-          !sessionLive && !forkFailed,
-          { raw }
-        )
         break
       }
     }

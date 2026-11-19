@@ -691,31 +691,110 @@ describe('tool calls', () => {
   })
 })
 
-describe('session failures are classified by whether a session is up', () => {
+describe('session failures are fatal once the node stops trying', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
+  })
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
   function collect(toolkit: OpenAILiveToolkit): OpenAILiveError[] {
     const errors: OpenAILiveError[] = []
     toolkit.addErrorListener((e) => errors.push(e))
     return errors
   }
 
-  it('is fatal with no session up, and non-fatal during one', async () => {
+  function failed(message: string, reason: string, reconnecting = true): void {
+    emitEvent('engine-1.liveNode', 'error', { type: 'transport_error', code: '', message })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason, reconnecting })
+  }
+
+  it('is non-fatal during a session', async () => {
+    const errors = collect(await running())
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    failed('WebRTC connection failed.', 'dropped')
+    expect(errors.map((e) => [e.message, e.fatal])).toEqual([['WebRTC connection failed.', false]])
+  })
+
+  it('is fatal when the node stops trying, with the error type and code', async () => {
+    const errors = collect(await running())
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'insufficient_quota',
+      code: 'insufficient_quota',
+      message: 'Failed to create the live session: HTTP 429',
+    })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', {
+      reason: 'refused',
+      reconnecting: false,
+    })
+    expect(errors.map((e) => [e.code, e.message, e.fatal])).toEqual([
+      ['SESSION_FAILED', 'Failed to create the live session: HTTP 429', true],
+    ])
+    expect(errors[0]!.details).toMatchObject({
+      type: 'insufficient_quota',
+      code: 'insufficient_quota',
+    })
+  })
+
+  it('only logs tries while offline', async () => {
+    const errors = collect(await running())
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'dropped', reconnecting: true })
+    for (let i = 0; i < 5; i++) {
+      failed("Failed to create the live session: Couldn't resolve host", 'unreachable')
+    }
+    jest.advanceTimersByTime(5_000)
+    expect(errors).toEqual([])
+    expect(logged()).toContain(
+      "session unreachable, trying again: Failed to create the live session: Couldn't resolve host"
+    )
+  })
+
+  it('is fatal after 3 tries in a row fail with the network up, until a session comes up', async () => {
+    const errors = collect(await running())
+    failed('Failed to create the live session: HTTP 502', 'dropped')
+    failed("Failed to create the live session: Couldn't resolve host", 'unreachable')
+    failed('Failed to create the live session: HTTP 502', 'dropped')
+    failed('Failed to create the live session: HTTP 502', 'dropped')
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    emitEvent('engine-1.liveNode', 'sessionClosed', { reason: 'expired' })
+    failed('Failed to create the live session: HTTP 502', 'dropped')
+    expect(errors.map((e) => e.fatal)).toEqual([false, false, true, false])
+  })
+
+  it('is fatal when no sessionDisconnected follows', async () => {
+    const errors = collect(await running())
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'missing_switchboard_app',
+      message: 'OpenAI.Live over webrtc: the Switchboard SDK has no app.',
+    })
+    expect(errors).toEqual([])
+    jest.advanceTimersByTime(1_000)
+    expect(errors.map((e) => e.fatal)).toEqual([true])
+  })
+
+  it('is non-fatal when the session comes up anyway', async () => {
+    const errors = collect(await running())
+    emitEvent('engine-1.liveNode', 'error', { message: 'hiccup' })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    jest.advanceTimersByTime(1_000)
+    expect(errors.map((e) => [e.message, e.fatal])).toEqual([['hiccup', false]])
+  })
+
+  it('drops a failure held when the engine stops', async () => {
     const toolkit = await running()
     const errors = collect(toolkit)
-    emitEvent('engine-1.liveNode', 'error', { message: 'invalid key' })
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-    emitEvent('engine-1.liveNode', 'error', { message: 'hiccup' })
-    emitEvent('engine-1.liveNode', 'sessionClosed', { reason: 'expired' })
-    emitEvent('engine-1.liveNode', 'error', { message: 'down again' })
-    expect(errors.map((e) => [e.code, e.message, e.fatal])).toEqual([
-      ['SESSION_FAILED', 'invalid key', true],
-      ['SESSION_FAILED', 'hiccup', false],
-      ['SESSION_FAILED', 'down again', true],
-    ])
+    emitEvent('engine-1.liveNode', 'error', { message: 'late' })
+    toolkit.stop()
+    jest.advanceTimersByTime(1_000)
+    expect(errors).toEqual([])
   })
 
   it('falls back to the raw payload when there is no message', async () => {
     const errors = collect(await running())
     emitEvent('engine-1.liveNode', 'error', {})
+    jest.advanceTimersByTime(1_000)
     expect(errors[0]!.message).toContain('Session error')
   })
 
@@ -725,17 +804,28 @@ describe('session failures are classified by whether a session is up', () => {
       message: 'Failed to create the live session: HTTP 401, Invalid app credentials.',
     }
 
+    function unauthorized(error: { type: string; message: string }): void {
+      emitEvent('engine-1.liveNode', 'error', error)
+      emitEvent('engine-1.liveNode', 'sessionDisconnected', {
+        reason: 'unauthorized',
+        reconnecting: false,
+      })
+    }
+
     it('says to check your own credentials', async () => {
       const errors = collect(await running())
-      emitEvent('engine-1.liveNode', 'error', REFUSED)
-      expect(errors[0]!.message).toBe(
-        `${REFUSED.message} Check appId and appSecret against your app at https://console.switchboard.audio.`
-      )
+      unauthorized(REFUSED)
+      expect(errors.map((e) => [e.message, e.fatal])).toEqual([
+        [
+          `${REFUSED.message} Check appId and appSecret against your app at https://console.switchboard.audio.`,
+          true,
+        ],
+      ])
     })
 
     it('says the demo credentials may have been rotated', async () => {
       const errors = collect(await running({}))
-      emitEvent('engine-1.liveNode', 'error', REFUSED)
+      unauthorized(REFUSED)
       expect(errors[0]!.message).toContain('The demo credentials may have been rotated')
     })
 
@@ -745,7 +835,7 @@ describe('session failures are classified by whether a session is up', () => {
         type: 'invalid_request_error',
         message: 'Failed to create the live session: HTTP 401, Incorrect API key provided.',
       }
-      emitEvent('engine-1.liveNode', 'error', openAIRefused)
+      unauthorized(openAIRefused)
       expect(errors[0]!.message).toBe(openAIRefused.message)
     })
   })
@@ -1023,7 +1113,7 @@ describe('idle mode', () => {
     ])
   })
 
-  it('treats a refused fork as non-fatal', async () => {
+  it('treats a refused fork as non-fatal, and the next session as new', async () => {
     const toolkit = await live()
     const errors: OpenAILiveError[] = []
     toolkit.addErrorListener((e) => errors.push(e))
@@ -1033,7 +1123,10 @@ describe('idle mode', () => {
       type: 'invalid_request_error',
       message: 'The stored session was not found.',
     })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'refused', reconnecting: true })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
     expect(errors.map((e) => e.fatal)).toEqual([false])
+    expect(native.log).toHaveBeenCalledWith('session started s2')
   })
 
   it('treats a fork that fails to connect as non-fatal, and the next session as new', async () => {
@@ -1046,9 +1139,46 @@ describe('idle mode', () => {
       type: 'transport_error',
       message: 'Failed to create the live session: HTTP 502, Failed to fork live session',
     })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'dropped', reconnecting: true })
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
     expect(errors.map((e) => e.fatal)).toEqual([false])
     expect(native.log).toHaveBeenCalledWith('session started s2')
+  })
+
+  it('keeps a fork tried again while offline', async () => {
+    const toolkit = await live()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'transport_error',
+      message: "Failed to create the live session: Couldn't resolve host",
+    })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', {
+      reason: 'unreachable',
+      reconnecting: true,
+    })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(errors).toEqual([])
+    expect(native.log).toHaveBeenCalledWith('session started s2 (fork)')
+  })
+
+  it('treats a wake refused for the credentials as fatal', async () => {
+    const toolkit = await live()
+    const errors: OpenAILiveError[] = []
+    toolkit.addErrorListener((e) => errors.push(e))
+    jest.advanceTimersByTime(10_000)
+    vad('speechStarted')
+    emitEvent('engine-1.liveNode', 'error', {
+      type: 'transport_error',
+      message: 'Failed to create the live session: HTTP 401, Invalid app credentials.',
+    })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', {
+      reason: 'unauthorized',
+      reconnecting: false,
+    })
+    expect(errors.map((e) => e.fatal)).toEqual([true])
   })
 
   it('stops counting once the engine stops', async () => {
@@ -1206,6 +1336,10 @@ describe('logs', () => {
     const toolkit = initialized()
     toolkit.addErrorListener(() => {})
     emitEvent('engine-1.liveNode', 'error', { message: 'boom' })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', {
+      reason: 'refused',
+      reconnecting: false,
+    })
     expect(logged()).toContain('error SESSION_FAILED (fatal): boom')
   })
 
@@ -1525,18 +1659,18 @@ describe('offline notice', () => {
     expect(spoken()).toEqual([OFFLINE])
   })
 
-  it('says it is back, reconnects at once and tells the model how long it was gone', async () => {
+  it('says it is back and tells the model how long it was gone, leaving the reconnect to the node', async () => {
     await running({ ...CREDS, offlineNotice: true, continueConversation: true })
     live('sessionStarted', { sessionId: 's1' })
     emitNetwork(false)
-    live('sessionDisconnected')
+    live('sessionDisconnected', { reason: 'dropped', reconnecting: true })
     await jest.advanceTimersByTimeAsync(3_000)
     expect(spoken()).toEqual([OFFLINE])
 
     await jest.advanceTimersByTimeAsync(7_000)
     emitNetwork(true)
     expect(spoken()).toEqual([OFFLINE, "We're back online."])
-    expect(commandFor('startSession').params.params).toEqual({ forkSessionId: 's1' })
+    expect(commandFor('startSession')).toBeUndefined()
     live('sessionStarted', { sessionId: 's2' })
     expect(told()).toContain(
       "The connection was lost for 10 s, and the user was told; it's back now."
@@ -1828,6 +1962,7 @@ describe('stop / release', () => {
       type: 'invalid_request_error',
       message: 'The stored session was not found.',
     })
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'refused', reconnecting: true })
     expect(errors.map((e) => e.fatal)).toEqual([false])
   })
 
