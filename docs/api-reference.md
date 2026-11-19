@@ -96,7 +96,7 @@ Every failure is an `OpenAILiveError` with a `code`, a `message` and `fatal`. Fa
 | `ENGINE_CREATION_FAILED` | yes | The graph couldn't be built. |
 | `ENGINE_START_FAILED` | yes | The engine refused to start. |
 | `ENGINE_STOP_FAILED` | yes | The engine refused to stop; it's still running. |
-| `SESSION_FAILED` | if no session is up | OpenAI reported an error. During a live session it's non-fatal. |
+| `SESSION_FAILED` | if no session is up | OpenAI reported an error, or the Switchboard backend refused the app's credentials. During a live session it's non-fatal. |
 | `TOOL_HANDLER_FAILED` | no | A handler threw; the model was told. |
 | `TOOL_RESULT_UNDELIVERED` | no | A tool result couldn't reach OpenAI. |
 | `MEDIA_FAILED` | no | Media couldn't play: `media` is off, the engine isn't running, the URL isn't http(s), or the stream failed. Also in `useMedia().error`. |

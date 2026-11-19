@@ -13,7 +13,13 @@ import { NativeModuleRPCClient } from './NativeModuleRPCClient'
 import { SwitchboardClient } from './SwitchboardClient'
 import { DEFAULT_DELEGATE_MODEL, DEFAULT_MODEL, DEFAULT_VOICE, type OpenAIVoice } from './voice'
 import { DEFAULT_SWITCHBOARD_APP_ID, DEFAULT_SWITCHBOARD_APP_SECRET } from './credentials'
-import { OpenAILiveError, asLiveError, microphoneDenied, type OpenAILiveErrorCode } from './errors'
+import {
+  OpenAILiveError,
+  appRefusedHint,
+  asLiveError,
+  microphoneDenied,
+  type OpenAILiveErrorCode,
+} from './errors'
 import type { FeatureGraph, FeatureHost, ToolkitFeature } from './feature'
 import { createMedia } from './media/media'
 import type { MediaOptions } from './media/types'
@@ -605,6 +611,7 @@ export function createOpenAILiveToolkit() {
   let nativeSubscribed = false
   let transport: OpenAILiveTransport = 'webrtc'
   let openAIApiKey = ''
+  let demoCredentials = false
   let isolationSupported = false
   let isolationAvailable = false
   let speakerIsolation = true
@@ -767,6 +774,7 @@ export function createOpenAILiveToolkit() {
     if (appSecret.trim() === '') {
       throw new Error('appSecret is required')
     }
+    demoCredentials = appId === DEFAULT_SWITCHBOARD_APP_ID
     transport = options.transport ?? 'webrtc'
     openAIApiKey = options.openAIApiKey?.trim() ?? ''
     if (transport === 'webrtc' && openAIApiKey !== '') {
@@ -1982,7 +1990,9 @@ export function createOpenAILiveToolkit() {
         }
         emitError(
           'SESSION_FAILED',
-          message?.trim() ? message : `Session error: ${event.raw}`,
+          message?.trim()
+            ? message + appRefusedHint(data?.type, message, demoCredentials)
+            : `Session error: ${event.raw}`,
           !sessionLive && !forkFailed,
           { raw }
         )
