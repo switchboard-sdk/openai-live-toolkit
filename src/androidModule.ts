@@ -19,6 +19,8 @@ export interface OpenAILiveToolkitAndroidModule {
   setTimer(id: number, ms: number): Promise<boolean>
   cancelTimer(id: number): void
   isNetworkAvailable(): boolean
+  /** Whether the communication route plays on the loudspeaker. */
+  isOnSpeaker(): boolean
   /** Emit {@link NETWORK_CHANGED_EVENT} whenever {@link isNetworkAvailable} changes. */
   watchNetwork(): void
   /** Resolves to a WAV file of `text` said in `language` with the device's voice, or ''. */

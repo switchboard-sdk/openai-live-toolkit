@@ -90,7 +90,7 @@ export interface OpenAILiveToolkitContextValue {
   connectionStatus: OpenAILiveToolkitConnectionStatus
   /**
    * What the conversation is doing while connected, from the voice activity detector (idle mode
-   * only) and the transcript: `'userSpeaking'` and `'speaking'` end a second after the last
+   * or media only) and the transcript: `'userSpeaking'` and `'speaking'` end a second after the last
    * fragment, `'thinking'` lasts from a delegation until the model speaks.
    */
   activity: OpenAILiveActivity
@@ -470,7 +470,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     // The model's set_voice_volume tool changes it too.
     setVoiceVolumeState(toolkit.voiceVolume)
     const voiceVolumeSub = toolkit.addVoiceVolumeListener(setVoiceVolumeState)
-    // Speech the transcript hasn't caught up with yet; only there in idle mode.
+    // Speech the transcript hasn't caught up with yet; only there in idle mode or with media.
     const vadSub = toolkit.addEventListener('vad', (e) => {
       if (e.name === 'speechStarted') {
         showActivity('userSpeaking')

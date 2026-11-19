@@ -44,6 +44,7 @@ describe('media off', () => {
     await running()
     const ids = graphNodes().map((n) => n.id)
     expect(ids.filter((id) => id.startsWith('media'))).toEqual([])
+    expect(ids).not.toContain('vadNode')
     expect(graphNodes().find((n) => n.id === 'mixerNode').configuration).toEqual({
       numberOfInputs: 1,
     })
@@ -285,10 +286,87 @@ describe('media', () => {
     expect(toolkit.media.status.volume).toBe(1)
     toolkit.media.setVolume(0.5)
     await toolkit.start()
-    expect(graphNodes().find((n) => n.id === 'mediaVolumeNode').properties).toEqual({ gain: 0.5 })
+    expect(graphNodes().find((n) => n.id === 'mediaVolumeNode').properties).toEqual({
+      gain: 0.5,
+      rampDurationMs: 100,
+    })
     toolkit.media.setVolume(2)
     expect(setValuesFor('mediaVolumeNode', 'gain').map((c) => c.params.value)).toEqual([1])
     expect(toolkit.media.status.volume).toBe(1)
+  })
+
+  describe('while the user speaks', () => {
+    const gains = () => setValuesFor('mediaVolumeNode', 'gain').map((c) => c.params.value)
+    const vad = (name: 'speechStarted' | 'speechEnded') => emitEvent('engine-1.vadNode', name)
+
+    beforeEach(() => jest.useFakeTimers())
+    afterEach(() => jest.useRealTimers())
+
+    it('lowers media from speech until a second after it', async () => {
+      const toolkit = await running(MEDIA)
+      expect(graphConnections()).toContainEqual({
+        sourceNode: 'vadSplitterNode',
+        destinationNode: 'vadNode',
+      })
+      toolkit.media.setVolume(0.5)
+      vad('speechStarted')
+      expect(gains()).toEqual([0.5, 0.05])
+
+      // Speech again within the second keeps it down.
+      vad('speechEnded')
+      await jest.advanceTimersByTimeAsync(900)
+      vad('speechStarted')
+      vad('speechEnded')
+      await jest.advanceTimersByTimeAsync(999)
+      expect(gains()).toEqual([0.5, 0.05])
+      await jest.advanceTimersByTimeAsync(1)
+      expect(gains()).toEqual([0.5, 0.05, 0.5])
+    })
+
+    it('ramps down quickly and back up slowly', async () => {
+      await running(MEDIA)
+      const ramps = () =>
+        setValuesFor('mediaVolumeNode', 'rampDurationMs').map((c) => c.params.value)
+      vad('speechStarted')
+      expect(ramps()).toEqual([])
+      vad('speechEnded')
+      await jest.advanceTimersByTimeAsync(1_000)
+      expect(ramps()).toEqual([600])
+      vad('speechStarted')
+      expect(ramps()).toEqual([600, 100])
+      expect(gains()).toEqual([0.1, 1, 0.1])
+    })
+
+    it('leaves media up on headphones, going by the route', async () => {
+      await running(MEDIA)
+      const route = (output: string) =>
+        emitEvent('switchboard.engine-1', 'routeChanged', { output, input: 'MicrophoneWired' })
+      route('Headphones')
+      vad('speechStarted')
+      expect(gains()).toEqual([])
+      vad('speechEnded')
+      route('Speaker')
+      vad('speechStarted')
+      expect(gains()).toEqual([0.1])
+    })
+
+    it('leaves media up while muted', async () => {
+      const toolkit = await running(MEDIA)
+      toolkit.setMuted(true)
+      vad('speechStarted')
+      vad('speechEnded')
+      await jest.advanceTimersByTimeAsync(2_000)
+      expect(gains()).toEqual([])
+    })
+
+    it('forgets the speech when the engine stops', async () => {
+      const toolkit = await running(MEDIA)
+      vad('speechStarted')
+      await toolkit.stop()
+      await toolkit.start()
+      toolkit.media.setVolume(0.5)
+      expect(gains()).toEqual([0.1, 0.5])
+    })
   })
 
   it('a file played to its end is no longer playing', async () => {
