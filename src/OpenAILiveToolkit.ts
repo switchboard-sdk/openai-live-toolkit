@@ -145,8 +145,9 @@ export interface OpenAILiveToolkitInitializeOptions {
   /**
    * When the network is gone for a few seconds, or a session can't be reached for longer, say so
    * with the device's voice (on Android, its text-to-speech engine if it has one), and again once
-   * it's back, when media that stopped meanwhile plays again. The model is told how long it was
-   * offline. Media is lowered while the device speaks.
+   * the session is back, or the network while idle. Media that stopped meanwhile plays again when
+   * the network is back. The model is told how long it was offline. Media is lowered while the
+   * device speaks.
    * `true` says it in English. Off by default.
    */
   offlineNotice?: boolean | OfflineNotice
@@ -1542,8 +1543,10 @@ export function createOpenAILiveToolkit() {
     if (!running) {
       return
     }
-    announceBack()
-    // The node reconnects by itself, trying every 2 s while offline.
+    // A session that's down is back once it starts again, which the node retries every 2 s.
+    if (sessionLive || idle) {
+      announceBack()
+    }
     features.forEach((f) => f.networkBack())
   }
 

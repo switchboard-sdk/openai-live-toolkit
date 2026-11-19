@@ -1659,7 +1659,7 @@ describe('offline notice', () => {
     expect(spoken()).toEqual([OFFLINE])
   })
 
-  it('says it is back and tells the model how long it was gone, leaving the reconnect to the node', async () => {
+  it('says it is back once the session is, leaving the reconnect to the node', async () => {
     await running({ ...CREDS, offlineNotice: true, continueConversation: true })
     live('sessionStarted', { sessionId: 's1' })
     emitNetwork(false)
@@ -1669,16 +1669,34 @@ describe('offline notice', () => {
 
     await jest.advanceTimersByTimeAsync(7_000)
     emitNetwork(true)
-    expect(spoken()).toEqual([OFFLINE, "We're back online."])
     expect(commandFor('startSession')).toBeUndefined()
+    // Tries that still fail with the network back don't say it again.
+    live('sessionStarting')
+    live('sessionDisconnected', { reason: 'unreachable', reconnecting: true })
+    await jest.advanceTimersByTimeAsync(20_000)
+    expect(spoken()).toEqual([OFFLINE])
+
     live('sessionStarted', { sessionId: 's2' })
+    expect(spoken()).toEqual([OFFLINE, "We're back online."])
     expect(told()).toContain(
-      "The connection was lost for 10 s, and the user was told; it's back now."
+      "The connection was lost for 30 s, and the user was told; it's back now."
     )
   })
 
-  it('says it is back when the network returns while the session is closed for quiet', async () => {
+  it('says it is back when the network returns during a session that held on', async () => {
     await running({ ...CREDS, offlineNotice: true })
+    live('sessionStarted', { sessionId: 's1' })
+    emitNetwork(false)
+    await jest.advanceTimersByTimeAsync(3_000)
+    emitNetwork(true)
+    expect(spoken()).toEqual([OFFLINE, "We're back online."])
+  })
+
+  it('says it is back when the network returns while the session is closed for quiet', async () => {
+    await running({ ...CREDS, offlineNotice: true, idleTimeoutMs: 10_000 })
+    live('sessionStarted', { sessionId: 's1' })
+    await jest.advanceTimersByTimeAsync(10_000)
+    expect(commandFor('endSession')).toBeDefined()
     emitNetwork(false)
     await jest.advanceTimersByTimeAsync(3_000)
     emitNetwork(true)
@@ -1715,6 +1733,7 @@ describe('offline notice', () => {
   it('keeps media lowered through a notice that cuts off another, then raises it', async () => {
     const toolkit = await running({ ...CREDS, offlineNotice: true, media: true })
     const gains = () => setValuesFor('mediaVolumeNode', 'gain').map((c) => c.params.value)
+    live('sessionStarted', { sessionId: 's1' })
     toolkit.media.play('https://radio.example/live.mp3')
     emitNetwork(false)
     await jest.advanceTimersByTimeAsync(3_000)
