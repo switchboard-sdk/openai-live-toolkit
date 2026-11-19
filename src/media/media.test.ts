@@ -22,7 +22,7 @@ import {
   sentCommands,
   setValuesFor,
 } from '../test-helpers'
-import { isLocalUrl, redactUrl } from './sanitize'
+import { decodeEntities, isLocalUrl, redactUrl } from './sanitize'
 import type { MediaStatus } from './types'
 
 // Media as the toolkit runs it: its nodes in the graph, the player's events, the media tools, and
@@ -783,6 +783,35 @@ describe('media tools', () => {
       )
       expect(note!.length).toBeLessThan(140)
       expect(await callTool('get_now_playing')).toMatchObject({ station: '"Evil Radio"' })
+    })
+
+    it('decodes HTML entities in what the stream says', async () => {
+      const toolkit = await running({ ...MEDIA, logFile: true })
+      toolkit.media.setTools({ stations: STATIONS })
+      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+      toolkit.media.play('https://other.example/live.mp3')
+      ready({
+        title: 'Tom Petty &amp; The Heartbreakers - &quot;Free Fallin&#39;&quot;',
+        stationName: 'Rock &#x26; Roll',
+        genre: 'Rock &AMP; Roll',
+        url: 'https://rock.example/?a=1&amp;b=2',
+      })
+      expect(toolkit.media.status.metadata).toEqual({
+        title: 'Tom Petty & The Heartbreakers - "Free Fallin\'"',
+        stationName: 'Rock & Roll',
+        genre: 'Rock & Roll',
+        url: 'https://rock.example/?a=1&amp;b=2',
+      })
+      expect(logged().join('\n')).toContain('Tom Petty & The Heartbreakers')
+      expect(thinking().slice(-1)).toEqual([
+        `Now playing on "Rock & Roll": "Tom Petty & The Heartbreakers - 'Free Fallin''".`,
+      ])
+    })
+
+    it('leaves what is not an entity, and decodes only once', () => {
+      expect(decodeEntities('AT&T &copy; &#0; &#xd800; &#1114112; &amp;amp; &#128512; a&b;')).toBe(
+        'AT&T &copy; &#0; &#xd800; &#1114112; &amp; 😀 a&b;'
+      )
     })
 
     it('says nothing without media tools, or before anything played', async () => {

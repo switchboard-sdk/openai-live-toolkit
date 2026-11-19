@@ -3,7 +3,7 @@ import NativeOpenAILiveToolkit from '../NativeOpenAILiveToolkit'
 import { OpenAILiveError } from '../errors'
 import type { FeatureGraph, FeatureHost, ToolkitFeature } from '../feature'
 import { log } from '../logs'
-import { redactUrl, redactUrls, streamText } from './sanitize'
+import { decodeEntities, redactUrl, redactUrls, streamText } from './sanitize'
 import { MEDIA_TOOL_NAMES, mediaTools, stationForModel, type MediaToolsPlayer } from './tools'
 import type {
   ExternalPlayer,
@@ -527,10 +527,12 @@ export function createMedia(host: FeatureHost) {
         }
         break
       }
-      case 'metadata':
-        log(`media: now playing ${JSON.stringify(data ?? {})}`)
-        setStatus({ metadata: data as MediaMetadata })
+      case 'metadata': {
+        const metadata = decodeMetadata(data as MediaMetadata | undefined)
+        log(`media: now playing ${JSON.stringify(metadata ?? {})}`)
+        setStatus({ metadata })
         break
+      }
       case 'error': {
         if (skipNextError) {
           skipNextError = false
@@ -663,4 +665,18 @@ export function createMedia(host: FeatureHost) {
       },
     },
   }
+}
+
+/** What a stream says, with HTML entities decoded in its text. The station's website stays as sent. */
+function decodeMetadata(metadata: MediaMetadata | undefined): MediaMetadata | null {
+  if (!metadata) {
+    return null
+  }
+  const decoded = { ...metadata }
+  for (const key of ['title', 'stationName', 'genre'] as const) {
+    if (typeof decoded[key] === 'string') {
+      decoded[key] = decodeEntities(decoded[key])
+    }
+  }
+  return decoded
 }

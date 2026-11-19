@@ -24,6 +24,30 @@ export function streamText(text: string): string {
   return line.length > MAX_STREAM_TEXT ? `${line.slice(0, MAX_STREAM_TEXT)}…` : line
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+}
+
+/** Text with the HTML entities some stations send, such as `&amp;` and `&#39;`, decoded once. */
+export function decodeEntities(text: string): string {
+  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (entity, dec, hex, name) => {
+    if (name) {
+      return NAMED_ENTITIES[(name as string).toLowerCase()] ?? entity
+    }
+    const code = dec ? parseInt(dec as string, 10) : parseInt(hex as string, 16)
+    // NUL, surrogates and anything past Unicode aren't characters.
+    if (code === 0 || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff) {
+      return entity
+    }
+    return String.fromCodePoint(code)
+  })
+}
+
 /**
  * Whether a URL points at the device itself or a local network, which the model mustn't reach. Only
  * the URL is checked: a name that resolves to a local address, or a redirect to one, gets through.

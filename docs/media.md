@@ -46,7 +46,7 @@ media.stop()
 
 - **Only while the engine runs.** `play` before `start()` fails with `MEDIA_FAILED` in `media.error`; `stop()` stops the media and closes the stream. Idle mode leaves it playing while the session is closed.
 - **Formats.** MP3 and AAC (LC, HE-AAC, HE-AAC v2): live streams, files and HLS playlists, with packed audio or MPEG-TS segments (not fMP4 or encrypted ones). Android plays MP3 only for now.
-- **What's playing.** Shoutcast and Icecast stations fill `metadata`: `stationName` once connected, and `title` when the song or show changes.
+- **What's playing.** Shoutcast and Icecast stations fill `metadata`: `stationName` once connected, and `title` when the song or show changes. HTML entities some stations send, such as `&amp;`, are decoded.
 - **Pausing a live stream** resumes close to live, not where it paused.
 - **Offline.** With `offlineNotice`, media is lowered while the device says the connection is lost or back, and media that failed while offline plays again once the network is back.
 
