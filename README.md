@@ -2,7 +2,7 @@
 
 OpenAI's GPT-Live (`gpt-live-1`) is a full-duplex voice model. It listens while it speaks and decides for itself when to take a turn, when to back off, and when someone has interrupted it. There is no turn detection to configure and no barge-in to tune. Conversations feel closer to talking with a person.
 
-`@synervoz/openai-live-toolkit` puts that model in a React Native app. One provider and two hooks handle the Live session, microphone and speaker I/O, platform echo cancellation, tool calls into your app, and a live transcript of both sides. Optional on-device speaker isolation keeps other voices in the room from reaching the model. It's built on the [Switchboard SDK](https://docs.switchboard.audio/).
+Switchboard's OpenAI Live Toolkit (`@synervoz/openai-live-toolkit`) puts that model in a React Native app. One provider and two hooks handle the GPT-Live session, microphone and speaker I/O, platform echo cancellation, tool calls into your app, and a live transcript of both sides. Optional on-device speaker isolation keeps other voices in the room from reaching the model. It's built on the [Switchboard SDK](https://docs.switchboard.audio/).
 
 | Platform | Status    |
 | -------- | --------- |
@@ -15,7 +15,7 @@ OpenAI's GPT-Live (`gpt-live-1`) is a full-duplex voice model. It listens while 
 
 The [example app](example/README.md) running on an iPhone. It opens with talking over the model mid-answer, which GPT-Live handles without any barge-in settings. Then "what time is it?" and "make the background dark blue" run through two `useTool` hooks while the conversation continues. It closes on speaker isolation with someone else talking nearby: with it off, the transcript picks up the other voice, and with it on, only yours.
 
-## What the API leaves out
+## What the GPT-Live API leaves out
 
 GPT-Live makes the conversation itself easy: speech goes up, speech comes back, and the model handles the turn-taking in between. What it gives you is a connection and an audio stream. Building an app on it still means solving:
 
@@ -90,7 +90,7 @@ const { speakerIsolation } = useOpenAILiveToolkit()
 speakerIsolation.setEnabled(true)
 ```
 
-Speaker isolation is optional and iOS only. It needs an ai-coustics license key and the AICoustics Switchboard extension, which isn't published yet and has no Android build. Without it the graph runs `mic → mono → OpenAI.Live → speaker` and `speakerIsolation.available` is false. See [Getting started](docs/getting-started.md#speaker-isolation).
+Speaker isolation is optional and iOS only. It needs an ai-coustics license key and the AICoustics Switchboard extension, which is in early access ([hello@synervoz.com](mailto:hello@synervoz.com)) and has no Android build. Without it the graph runs `mic → mono → OpenAI.Live → speaker` and `speakerIsolation.available` is false. See [Getting started](docs/getting-started.md#speaker-isolation).
 
 ## Tools
 

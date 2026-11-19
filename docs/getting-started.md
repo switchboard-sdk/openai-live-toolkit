@@ -25,7 +25,7 @@ Downloads are skipped when the requested build is already present, so a newer `d
 
 Speaker isolation is optional and off by default. It needs two things:
 
-1. **The AICoustics extension.** It isn't published, so it's only linked when you ask for it, from a local Switchboard SDK build that has it:
+1. **The AICoustics extension.** It's in early access ([hello@synervoz.com](mailto:hello@synervoz.com)), so it's only linked when you ask for it, from a local Switchboard SDK build that has it:
 
    ```sh
    SWITCHBOARD_LOCAL_BUILD=/path/to/switchboard-sdk/out OPENAI_LIVE_AICOUSTICS=1 bundle exec pod install
