@@ -11,7 +11,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `transport` | `'webrtc'` | `'webrtc'`: the Switchboard backend creates the session with the app's OpenAI key. `'websocket'`: straight to OpenAI with `openAIApiKey`. Fixed once the engine is built. See [Credentials](getting-started.md#credentials). |
 | `openAIApiKey` | — | Required to start with `'websocket'`. Ignored with `'webrtc'`. |
 | `aiCousticsLicenseKey` | — | Enables speaker isolation in a build that links AICoustics. |
-| `appId`, `appSecret` | shared defaults | Switchboard credentials. A blank string throws. |
+| `appId`, `appSecret` | demo credentials | Switchboard credentials. The demo credentials are rotated regularly; [register your own](https://console.switchboard.audio/register) for an app you ship. A blank string throws. |
 | `apiUrl` | production | Switchboard backend URL. The SDK only accepts `https://<host>.switchboard.audio`. |
 | `instructions` | `''` | System prompt. |
 | `voice` | `'marin'` | See `VOICES`. |

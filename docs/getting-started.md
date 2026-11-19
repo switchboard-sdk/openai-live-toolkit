@@ -100,21 +100,42 @@ The emulator works for arm64 and x86_64 images.
 
 ## Credentials
 
-The session reaches GPT-Live over one of two transports, set with the provider's `transport` prop:
+The toolkit identifies your app to Switchboard with an `appId` and `appSecret`. The toolkit and its example ship with regularly rotated demo credentials, so they run with no setup. When you deploy your own app, register an `appId` at [console.switchboard.audio/register](https://console.switchboard.audio/register).
 
-- **`webrtc`** (default). The SDK sends its WebRTC offer to the Switchboard backend, which creates the session with the Switchboard app's OpenAI key and returns OpenAI's answer. Audio and events then go straight between the phone and OpenAI. The app holds no OpenAI key, but the Switchboard app needs one configured on the backend.
+Pass your app credentials to the provider, from configuration rather than source:
+
+```tsx
+<OpenAILiveToolkitProvider appId={SWITCHBOARD_APP_ID} appSecret={SWITCHBOARD_APP_SECRET}>
+```
+
+### When a limit is reached
+
+`start()` fails with a fatal `SESSION_FAILED` whose message includes `insufficient_quota`, and the toolkit doesn't retry.
+
+### Your own OpenAI key
+
+Self-serve keys are coming soon in the console. Until then there are two ways to run on your own OpenAI account:
+
+- **On your Switchboard app.** We set your key on the backend, and the app keeps using the default `webrtc` transport, holding no OpenAI key. Email [hello@synervoz.com](mailto:hello@synervoz.com) to ask.
+- **In the app, with the `websocket` transport.** Pass `transport="websocket"` and `openAIApiKey`. The session goes straight to OpenAI, and the backend isn't used for it. The key ships inside the app, where anyone with the app can extract it, so this suits development and internal builds. Use a key from its own OpenAI project with a hard spend limit.
+
+### Transports
+
+The provider's `transport` prop sets how the session reaches GPT-Live:
+
+- **`webrtc`** (default). The SDK sends its WebRTC offer to the Switchboard backend, which creates the session with your Switchboard app's OpenAI key and returns OpenAI's answer. Audio and events then go straight between the phone and OpenAI.
 - **`websocket`**. Connects straight to OpenAI with `openAIApiKey`.
 
-Pass the credentials to the provider:
+### Props
 
 | Prop | Required | Notes |
 | --- | --- | --- |
-| `appId`, `appSecret` | no | Switchboard credentials. Fall back to shared defaults, which only exist on production. |
+| `appId`, `appSecret` | no | Switchboard credentials. Fall back to the demo credentials, which are rotated regularly. |
 | `apiUrl` | no | Switchboard backend URL. Defaults to production. Anything other than `https://<host>.switchboard.audio` fails `initialize`. |
 | `openAIApiKey` | with `websocket` | `start()` fails with `MISSING_API_KEY` without one. Ignored with `webrtc`. |
 | `aiCousticsLicenseKey` | no | Enables speaker isolation in a build that links AICoustics. Without either the graph has no Quail node. |
 
-Keep keys out of source. The example app reads them from `example/.env` with `react-native-dotenv`.
+The example app reads these from `example/.env` with `react-native-dotenv`. That keeps them out of source control, but not out of the app: the values are compiled into its JavaScript bundle.
 
 ## What runs
 
