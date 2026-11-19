@@ -718,6 +718,37 @@ describe('session failures are classified by whether a session is up', () => {
     emitEvent('engine-1.liveNode', 'error', {})
     expect(errors[0]!.message).toContain('Session error')
   })
+
+  describe('when the backend refuses the app', () => {
+    const REFUSED = {
+      type: 'transport_error',
+      message: 'Failed to create the live session: HTTP 401, Invalid app credentials.',
+    }
+
+    it('says to check your own credentials', async () => {
+      const errors = collect(await running())
+      emitEvent('engine-1.liveNode', 'error', REFUSED)
+      expect(errors[0]!.message).toBe(
+        `${REFUSED.message} Check appId and appSecret against your app at https://console.switchboard.audio.`
+      )
+    })
+
+    it('says the demo credentials may have been rotated', async () => {
+      const errors = collect(await running({}))
+      emitEvent('engine-1.liveNode', 'error', REFUSED)
+      expect(errors[0]!.message).toContain('The demo credentials may have been rotated')
+    })
+
+    it("adds nothing when OpenAI refuses the app's key", async () => {
+      const errors = collect(await running())
+      const openAIRefused = {
+        type: 'invalid_request_error',
+        message: 'Failed to create the live session: HTTP 401, Incorrect API key provided.',
+      }
+      emitEvent('engine-1.liveNode', 'error', openAIRefused)
+      expect(errors[0]!.message).toBe(openAIRefused.message)
+    })
+  })
 })
 
 describe('voice levels', () => {

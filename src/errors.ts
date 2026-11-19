@@ -68,6 +68,24 @@ export function microphoneDenied(): OpenAILiveError {
   )
 }
 
+/**
+ * What to do when the backend refuses the Switchboard app (wrong or rotated credentials, a disabled app),
+ * or `''` for any other session error. The node reports the refusal only as a transport error with
+ * the backend's HTTP 401 in its message.
+ */
+export function appRefusedHint(
+  type: string | undefined,
+  message: string,
+  demoCredentials: boolean
+): string {
+  if (type !== 'transport_error' || !/\bHTTP 401\b/.test(message)) {
+    return ''
+  }
+  return demoCredentials
+    ? ' The demo credentials may have been rotated: update the toolkit, or pass your own appId and appSecret from https://console.switchboard.audio.'
+    : ' Check appId and appSecret against your app at https://console.switchboard.audio.'
+}
+
 /** `err` as an {@link OpenAILiveError}, wrapping an unexpected throw with `code`. */
 export function asLiveError(
   err: unknown,
