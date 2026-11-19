@@ -28,6 +28,8 @@ export interface ToolkitFeature {
    * cuts off the one playing sends `true` again, with no `false` between.
    */
   noticeSpeaking(speaking: boolean): void
+  /** The user starts or stops speaking, from the voice activity detector. Never while muted. */
+  userSpeaking(speaking: boolean): void
   /** Another app is about to play: stop what keeps other apps' audio out. */
   makeWayForOtherAudio(): void
 }
@@ -38,6 +40,8 @@ export interface FeatureGraph {
   connections: object[]
   /** Its nodes that play into the mixer, next to the model's voice. */
   mixerInputs: string[]
+  /** Whether it follows the user's speech, which adds the voice activity detector. */
+  userSpeech?: boolean
 }
 
 /** What the toolkit offers a feature. */
@@ -61,5 +65,7 @@ export interface FeatureHost {
   /** Whether other apps' audio is kept out now. */
   isOtherAudioKeptOut(): boolean
   voiceVolume(): number
+  /** Whether audio plays on the phone's loudspeaker, where the microphone hears it. */
+  isOnSpeaker(): boolean
   reportError(error: OpenAILiveError): void
 }

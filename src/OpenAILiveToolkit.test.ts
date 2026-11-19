@@ -1928,6 +1928,18 @@ describe('Android', () => {
     DeviceEventEmitter.removeAllListeners(AUDIO_FOCUS_CHANGED_EVENT)
   })
 
+  it('lowers media while the user speaks only on the loudspeaker', async () => {
+    audioSession.isOnSpeaker = jest.fn(() => false)
+    await running({ ...CREDS, media: true })
+    const gains = () => setValuesFor('mediaVolumeNode', 'gain').map((c) => c.params.value)
+    emitEvent('engine-1.vadNode', 'speechStarted')
+    expect(gains()).toEqual([])
+    emitEvent('engine-1.vadNode', 'speechEnded')
+    audioSession.isOnSpeaker.mockReturnValue(true)
+    emitEvent('engine-1.vadNode', 'speechStarted')
+    expect(gains()).toEqual([0.1])
+  })
+
   it('asks for RECORD_AUDIO through PermissionsAndroid', async () => {
     await running()
     expect(permission).toHaveBeenCalledWith(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO)

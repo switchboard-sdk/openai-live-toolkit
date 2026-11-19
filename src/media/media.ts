@@ -3,6 +3,7 @@ import NativeOpenAILiveToolkit from '../NativeOpenAILiveToolkit'
 import { OpenAILiveError } from '../errors'
 import type { FeatureGraph, FeatureHost, ToolkitFeature } from '../feature'
 import { log } from '../logs'
+import { backgroundTimeout } from '../platform'
 import { decodeEntities, redactUrl, redactUrls, streamText } from './sanitize'
 import { MEDIA_TOOL_NAMES, mediaTools, stationForModel, type MediaToolsPlayer } from './tools'
 import type {
@@ -37,6 +38,15 @@ const NOW_PLAYING_SKIP_FORWARD = 30
 const NOW_PLAYING_SKIP_BACKWARD = 15
 // How far media is lowered while the device speaks an offline notice.
 const NOTICE_GAIN = 0.2
+// Media is lowered about 20 dB while the user speaks over the loudspeaker: louder, the phone's echo
+// cancellation can cut their speech up along with the media. It stays low for a second after, to bridge the pause before
+// the model answers.
+const USER_SPEECH_GAIN = 0.1
+const USER_SPEECH_HOLD_MS = 1_000
+// How long the volume takes to change: quickly down, so the user's first words are clear, and slowly
+// back up, like the ducking's release.
+const RAMP_DOWN_MS = 100
+const RAMP_UP_MS = 600
 
 const NO_MEDIA: Omit<MediaStatus, 'volume'> = {
   url: null,
@@ -89,6 +99,12 @@ export function createMedia(host: FeatureHost) {
   // What failed while offline, to play again once the network is back.
   let lostOffline: string | null = null
   let noticePlaying = false
+  // The user speaks, or stopped less than USER_SPEECH_HOLD_MS ago.
+  let userTalking = false
+  let cancelUserHold: (() => void) | null = null
+  // What the volume node was last given.
+  let gainSent = 1
+  let rampSent = RAMP_DOWN_MS
 
   /** Turn media on, with its settings, or off. */
   function configure(next: boolean | MediaOptions | undefined): void {
@@ -120,10 +136,16 @@ export function createMedia(host: FeatureHost) {
       return null
     }
     const loudness = options.loudness
+    gainSent = status.volume
+    rampSent = RAMP_DOWN_MS
     return {
       nodes: [
         { id: PLAYER_NODE, type: 'Switchboard.AudioPlayer' },
-        { id: VOLUME_NODE, type: 'Switchboard.Gain', properties: { gain: status.volume } },
+        {
+          id: VOLUME_NODE,
+          type: 'Switchboard.Gain',
+          properties: { gain: gainSent, rampDurationMs: rampSent },
+        },
         ...(loudness === null
           ? []
           : [
@@ -148,6 +170,7 @@ export function createMedia(host: FeatureHost) {
         { sourceNode: voice, destinationNode: DUCKING_NODE, destinationBusIndex: 1 },
       ],
       mixerInputs: [DUCKING_NODE],
+      userSpeech: true,
     }
   }
 
@@ -253,12 +276,27 @@ export function createMedia(host: FeatureHost) {
     applyGain()
   }
 
-  /** The volume, lowered while the device speaks a notice. */
+  /** The volume, lowered while the device speaks a notice or the user speaks. */
   function applyGain(): void {
     if (!options || !host.engineId()) {
       return
     }
-    host.client()?.setValue(VOLUME_NODE, 'gain', status.volume * (noticePlaying ? NOTICE_GAIN : 1))
+    const lowered = Math.min(noticePlaying ? NOTICE_GAIN : 1, userTalking ? USER_SPEECH_GAIN : 1)
+    const gain = status.volume * lowered
+    const ramp = gain > gainSent ? RAMP_UP_MS : RAMP_DOWN_MS
+    const client = host.client()
+    // The node takes the ramp for the next change of gain.
+    if (ramp !== rampSent) {
+      client?.setValue(VOLUME_NODE, 'rampDurationMs', ramp)
+      rampSent = ramp
+    }
+    client?.setValue(VOLUME_NODE, 'gain', gain)
+    gainSent = gain
+  }
+
+  function clearUserHold(): void {
+    cancelUserHold?.()
+    cancelUserHold = null
   }
 
   /** Resolves once the media has started or failed, or after timeoutMs with it still on its way. */
@@ -614,6 +652,8 @@ export function createMedia(host: FeatureHost) {
     engineStopped() {
       unload()
       lostOffline = null
+      clearUserHold()
+      userTalking = false
     },
 
     networkBack() {
@@ -632,6 +672,27 @@ export function createMedia(host: FeatureHost) {
 
     noticeSpeaking(speaking) {
       noticePlaying = speaking
+      applyGain()
+    },
+
+    userSpeaking(speaking) {
+      clearUserHold()
+      if (speaking === userTalking) {
+        return
+      }
+      if (!speaking) {
+        cancelUserHold = backgroundTimeout(() => {
+          cancelUserHold = null
+          userTalking = false
+          applyGain()
+        }, USER_SPEECH_HOLD_MS)
+        return
+      }
+      // Headphones and Bluetooth don't play into the microphone.
+      if (!host.isOnSpeaker()) {
+        return
+      }
+      userTalking = true
       applyGain()
     },
 

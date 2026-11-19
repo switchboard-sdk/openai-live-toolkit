@@ -176,7 +176,7 @@ export type Microphone = 'bluetooth' | 'phone'
 
 /**
  * The categories of event the toolkit surfaces, one per graph node it listens to. `'vad'`
- * (speechStarted / speechEnded) is only there in idle mode.
+ * (speechStarted / speechEnded) is only there in idle mode or with media.
  */
 export type OpenAILiveToolkitEventType = 'live' | 'vad'
 
@@ -466,7 +466,9 @@ function buildLiveEngine(
     )
     chain.push('downResamplerNode', ISOLATION_NODE, 'upResamplerNode')
   }
-  if (idleMode) {
+  // Idle mode wakes on speech; features such as media follow it too.
+  const vad = idleMode || features.some((f) => f.userSpeech)
+  if (vad) {
     nodes.push(
       { id: 'vadSplitterNode', type: 'Switchboard.BusSplitter' },
       {
@@ -542,7 +544,7 @@ function buildLiveEngine(
     sourceNode: chain[i],
     destinationNode,
   }))
-  if (idleMode) {
+  if (vad) {
     connections.push({ sourceNode: 'vadSplitterNode', destinationNode: VAD_NODE })
   }
   connections.push(
@@ -715,6 +717,17 @@ export function createOpenAILiveToolkit() {
     errorListeners.forEach((l) => l(error))
   }
 
+  // iOS: the engine's output port, such as 'Speaker' or 'Headphones', once it reports its route.
+  let outputPort: string | null = null
+
+  /** Whether audio plays on the loudspeaker. Assumed until the route says otherwise. */
+  function isOnSpeaker(): boolean {
+    if (Platform.OS === 'android') {
+      return androidModule()?.isOnSpeaker() ?? true
+    }
+    return outputPort === null || outputPort === 'Speaker'
+  }
+
   const host: FeatureHost = {
     client: () => client,
     engineId: () => engineId,
@@ -729,6 +742,7 @@ export function createOpenAILiveToolkit() {
     keepOtherAudioOut,
     isOtherAudioKeptOut: () => otherAudioKeptOut,
     voiceVolume: () => voiceVolume,
+    isOnSpeaker,
     reportError,
   }
   const media = createMedia(host)
@@ -1858,6 +1872,9 @@ export function createOpenAILiveToolkit() {
     if (engineId !== null && (objectURI === engineId || objectURI.endsWith(`.${engineId}`))) {
       const name = e?.name ?? e?.eventName ?? ''
       logEngineEvent(name, e?.data)
+      if (name === 'routeChanged') {
+        outputPort = e?.data?.output ?? null
+      }
       if (name === 'stateChanged') {
         features.forEach((f) => f.engineStateChanged(e?.data?.state, e?.data?.reason))
       }
@@ -2011,7 +2028,11 @@ export function createOpenAILiveToolkit() {
     } else if (name === 'speechEnded') {
       userSpeaking = false
       touch()
+    } else {
+      return
     }
+    // Muted, the user isn't talking to the model.
+    features.forEach((f) => f.userSpeaking(userSpeaking && !muted))
   }
 
   return {

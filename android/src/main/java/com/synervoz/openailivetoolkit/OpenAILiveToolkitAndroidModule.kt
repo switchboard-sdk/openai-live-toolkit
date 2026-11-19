@@ -235,6 +235,17 @@ class OpenAILiveToolkitAndroidModule(private val reactContext: ReactApplicationC
   @ReactMethod(isBlockingSynchronousMethod = true)
   fun isNetworkAvailable(): Boolean = network.isAvailable()
 
+  /** Whether the communication route plays on the loudspeaker. */
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  fun isOnSpeaker(): Boolean {
+    val am = audioManager
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      @Suppress("DEPRECATION")
+      return am.isSpeakerphoneOn
+    }
+    return am.communicationDevice?.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+  }
+
   /** Emit [NETWORK_CHANGED_EVENT] whenever [isNetworkAvailable] changes. */
   @ReactMethod
   fun watchNetwork() {

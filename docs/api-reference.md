@@ -41,7 +41,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | --- | --- |
 | `isRunning` | Engine started. |
 | `connectionStatus` | `'none' \| 'connecting' \| 'connected' \| 'idle' \| 'error'`. `'idle'`: idle mode closed the session and it reopens on speech. `'error'` stays until a session comes up. |
-| `activity` | `'listening' \| 'userSpeaking' \| 'thinking' \| 'speaking'`, while connected. `'userSpeaking'` comes from the voice activity detector (idle mode only) and the user's transcript, `'speaking'` from the model's transcript; both end a second after the last fragment. `'thinking'` lasts from a delegation until the model speaks, at most 15 s. |
+| `activity` | `'listening' \| 'userSpeaking' \| 'thinking' \| 'speaking'`, while connected. `'userSpeaking'` comes from the voice activity detector (idle mode or media only) and the user's transcript, `'speaking'` from the model's transcript; both end a second after the last fragment. `'thinking'` lasts from a delegation until the model speaks, at most 15 s. |
 | `error` | Outstanding fatal `OpenAILiveError`, or null. |
 | `start(options?)`, `stop()`, `release()` | Start opens a session; with `continueConversation` it continues the conversation a stop closed, or `options.continueSessionId`. Stop closes it and keeps the engine; release frees it. |
 | `sessionId` | The latest session's id, for the app to save and pass to `start` as `continueSessionId`. Null before the first session and after `newConversation()`. |

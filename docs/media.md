@@ -28,7 +28,7 @@ mic → … → OpenAI.Live → volume → mixer → limiter → speaker
            player → volume ───┘
 ```
 
-The player is mixed into the speaker output with the model's voice, so echo cancellation keeps it from the model. The ducking node follows the model's voice and lowers the media by about 16 dB while the model talks. With `loudness`, a loudness normalizer sits between the player and the volume.
+The player is mixed into the speaker output with the model's voice, so echo cancellation keeps it from the model. The ducking node follows the model's voice and lowers the media by about 16 dB while the model talks. While the user talks over the phone's loudspeaker, and for a second after, the volume drops to a tenth (about 20 dB), coming back up over 0.6 s, so echo cancellation doesn't cut up their speech along with the media. Not on headphones or Bluetooth, which don't play into the microphone. A voice activity detector says when; nothing changes while muted. With `loudness`, a loudness normalizer sits between the player and the volume.
 
 ## Playing
 
