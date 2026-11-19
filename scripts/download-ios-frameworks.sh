@@ -70,7 +70,7 @@ for pkg in "${PACKAGES[@]}"; do
   fi
 
   if [ "${pkg}" = "SwitchboardAICoustics" ]; then
-    echo "error: SwitchboardAICoustics isn't published. Set SWITCHBOARD_LOCAL_BUILD to an SDK build that has it, or leave out OPENAI_LIVE_AICOUSTICS." >&2
+    echo "error: SwitchboardAICoustics is in early access (hello@synervoz.com). Set SWITCHBOARD_LOCAL_BUILD to an SDK build that has it, or leave out OPENAI_LIVE_AICOUSTICS." >&2
     exit 1
   fi
 

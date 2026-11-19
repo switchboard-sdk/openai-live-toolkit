@@ -30,7 +30,7 @@ The first build downloads the Switchboard SDK from the Synervoz Maven repository
 
 ### Speaker isolation (optional)
 
-The app runs without it; the toggle stays disabled and says what's missing. To turn it on you need an ai-coustics license key and a local Switchboard SDK build with the AICoustics extension, which isn't published:
+The app runs without it; the toggle stays disabled and says what's missing. To turn it on you need an ai-coustics license key and a local Switchboard SDK build with the AICoustics extension, which is in early access ([hello@synervoz.com](mailto:hello@synervoz.com)):
 
 ```sh
 # in .env

@@ -1,7 +1,7 @@
 {
   "name": "@synervoz/openai-live-toolkit",
   "version": "0.1.0",
-  "description": "React Native toolkit for full-duplex OpenAI GPT-Live voice agents with optional ai-coustics speaker isolation, powered by the Switchboard SDK.",
+  "description": "Switchboard's OpenAI Live Toolkit: full-duplex voice agents in React Native on OpenAI's GPT-Live API, with optional ai-coustics speaker isolation.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "react-native": "src/index",

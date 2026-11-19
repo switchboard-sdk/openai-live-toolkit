@@ -49,7 +49,6 @@ media.stop()
 - **What's playing.** Shoutcast and Icecast stations fill `metadata`: `stationName` once connected, and `title` when the song or show changes.
 - **Pausing a live stream** resumes close to live, not where it paused.
 - **Offline.** With `offlineNotice`, media is lowered while the device says the connection is lost or back, and media that failed while offline plays again once the network is back.
-- **Switchboard build.** Streaming isn't in an S3 build yet; use a local SDK build ([Install](getting-started.md#install)).
 
 ## Letting the model control media
 
