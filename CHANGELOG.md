@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-23
+
 ### Added
 
 - `OpenAILiveToolkitProvider`, `useOpenAILiveToolkit` and `useTool` for full-duplex GPT-Live voice agents on iOS 15.1 and later.
@@ -38,3 +40,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `activity` on the hook: listening, the user speaking, thinking over a delegation, or the model speaking, for showing what the conversation is doing.
 - `useVoiceVolumeTool()`: the model can set its own voice's volume, for "speak up" and "quieter".
 - `useVoiceLevels()`: how loud the user and the model are, every 50 ms, for animating with their voices. VU meters on what the model hears and on its voice.
+
+### Changed
+
+- The toolkit uses the Switchboard SDK 3.3.0 release instead of the latest 3.3.0 development build. An Android app built with 1.0.0-beta.0 has the development build in Gradle's cache under the same version: run `./gradlew --refresh-dependencies` once.
