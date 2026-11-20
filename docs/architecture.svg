@@ -70,7 +70,7 @@
   <text x="640" y="357" class="sub sb-text">WebRTC or WebSocket</text>
   <rect x="230" y="413" width="510" height="48" rx="8" class="sb-node"/>
   <text x="485" y="433" class="name sb-text">Toolkit provider and hooks</text>
-  <text x="485" y="451" class="sub sb-text">routes tool calls, groups the transcript, reconnects after idle and network drops</text>
+  <text x="485" y="451" class="sub sb-text">routes tool calls, groups the transcript, reconnects after idle</text>
 
   <!-- Application logic: your app -->
   <rect x="210" y="530" width="550" height="160" rx="10" class="app-group"/>

@@ -93,7 +93,7 @@ The rest comes with the library:
 - **Bluetooth** always uses the headset's microphone and call-quality audio (HFP); `microphone` is iOS only.
 - **Other apps' audio.** Starting the engine takes the audio focus, so other apps pause, or with `mixWithOthers` keep playing, lowered by the system. See [Other apps' audio](#other-apps-audio).
 - **iOS only:** `voiceProcessing`, `echoCancelledInput`, `otherAudioDucking`, `duckOtherApps`, and Now Playing for media (`nowPlayingControls`).
-- **Offline notice.** `offlineNotice` speaks with the phone's text-to-speech engine. Most phones have one; on a phone without one the notice is silent, and the rest of it (reconnecting, lowering media, telling the model) still works.
+- **Offline notice.** `offlineNotice` speaks with the phone's text-to-speech engine. Most phones have one; on a phone without one the notice is silent, and the rest of it (lowering media, telling the model) still works.
 - **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
 
 The emulator works for arm64 and x86_64 images.
