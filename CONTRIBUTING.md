@@ -27,17 +27,17 @@ install the package, pack a tarball:
 ```sh
 npm install     # must come first: `npm pack` runs `prepare` → `tsc`, so without the
                 # devDependencies it fails with "tsc: command not found" (npm code 127)
-npm pack        # → synervoz-openai-live-toolkit-1.0.0-beta.0.tgz
+npm pack        # → synervoz-openai-live-toolkit-1.0.0.tgz
 
 cd /path/to/that-app
-npm install /path/to/openai-live-toolkit/synervoz-openai-live-toolkit-1.0.0-beta.0.tgz
+npm install /path/to/openai-live-toolkit/synervoz-openai-live-toolkit-1.0.0.tgz
 ```
 
 Install the tarball, not `file:../openai-live-toolkit` — a symlinked package
 breaks Metro resolution and duplicates React. The tarball is a snapshot, so re-pack
 and re-install after every change, or the app keeps building against the old API.
 
-CI does the same on every PR and nightly: [`build.yml`](.github/workflows/build.yml)
+CI does the same on every PR: [`build.yml`](.github/workflows/build.yml)
 packs the toolkit and builds the example app against the tarball for Android and iOS,
 from scratch with no caches.
 
@@ -76,23 +76,22 @@ CI runs the suite too.
 
 ## Release
 
-Releases are published to npm when a version tag is pushed. Versions follow [Semantic Versioning](https://semver.org/).
+Releases are published to npm when a version tag is pushed. Versions follow [Semantic Versioning](https://semver.org/). `main` only takes pull requests, so the version is bumped in one and tagged once it's merged.
 
 1. Check that the download scripts pin a `release/<version>` Switchboard SDK build, not a `develop` one.
 2. Update [`CHANGELOG.md`](CHANGELOG.md): move the `[Unreleased]` entries under a new version heading with the release date.
-3. Bump the version (this also creates the git tag) and push both:
+3. Bump the version without tagging, and open a pull request:
 
 ```sh
-npm version patch   # or minor / major
-git push && git push --tags
+npm version patch --no-git-tag-version   # or minor / major
 ```
 
-The [release workflow](.github/workflows/publish.yml) builds the package and publishes it to npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. Trusted publishing can only be set up once the package exists, so the first version, 1.0.0-beta.0, is published by hand, by someone with publish rights to the `@synervoz` scope. Provenance needs CI, so it's off for this one:
+4. Once it's merged, tag the merge commit:
 
 ```sh
-npm ci && npm run build
-npm publish --tag latest --provenance=false
-git tag v1.0.0-beta.0 && git push --tags
+git switch main && git pull
+version="v$(node -p "require('./package.json').version")"
+git tag "$version" && git push origin "$version"
 ```
 
-The workflow skips a version that's already on npm, so tagging it afterwards publishes nothing.
+The [release workflow](.github/workflows/publish.yml) builds the package and publishes it to npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. It skips a version that's already on npm.
