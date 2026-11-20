@@ -53,6 +53,12 @@ npm test
 `jest.config.js` — this is what CI runs (see
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
+The suite checks the node events it fakes against the Switchboard SDK's schema, so they
+match what the SDK sends. Download it with `npm run sdk:schema`, which takes
+`SWITCHBOARD_BUILD` as `pod install` does. Without it the check is skipped, except in CI.
+`emitUncheckedEvent` fakes an event the SDK doesn't send, such as one from a node the graph
+doesn't have.
+
 ### iOS native code
 
 The XCTest suite in [`ios/Tests`](ios/Tests) covers Now Playing, ducking the Music

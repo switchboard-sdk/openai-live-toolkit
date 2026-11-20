@@ -33,6 +33,8 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
+      # The suite checks the node events it fakes against the SDK's schema, and needs it in CI.
+      - run: npm run sdk:schema
       # Runs the TS unit suite and enforces the coverage thresholds in jest.config.js.
       - run: npm run test:cov
 

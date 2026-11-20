@@ -2,6 +2,7 @@ node_modules/
 dist/
 example/
 ios/Frameworks/
+.switchboard/
 Pods/
 build/
 *.log

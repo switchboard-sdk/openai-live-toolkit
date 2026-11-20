@@ -7,6 +7,7 @@ import {
   commandFor,
   commandsFor,
   emitEvent,
+  emitUncheckedEvent,
   flush,
   graphConnections,
   graphNodes,
@@ -56,7 +57,8 @@ describe('media off', () => {
       expect.objectContaining({ code: 'MEDIA_FAILED', message: expect.stringContaining('off') })
     )
     expect(commandFor('stream')).toBeUndefined()
-    emitEvent('engine-1.mediaPlayerNode', 'stateChanged', { state: 'ready' })
+    // With media off the graph has no player, so this comes from no node the toolkit made.
+    emitUncheckedEvent('engine-1.mediaPlayerNode', 'stateChanged', { state: 'ready' })
     expect(toolkit.media.status.state).toBe('idle')
   })
 
