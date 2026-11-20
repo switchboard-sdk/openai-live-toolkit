@@ -21,6 +21,7 @@ import {
   commandFor,
   commandsFor,
   emitEvent,
+  emitUncheckedEvent,
   engineConfig,
   flush,
   graphChain,
@@ -652,7 +653,8 @@ describe('tool calls', () => {
     const names: string[] = []
     toolkit.addEventListener('live', (e) => names.push(e.name))
     toolCall('t')
-    emitEvent('engine-1.liveNode', 't', { callId: 'call-1', delegationId: 'd1' })
+    // Named after the tool, so the SDK's schema can't list it.
+    emitUncheckedEvent('engine-1.liveNode', 't', { callId: 'call-1', delegationId: 'd1' })
     await flush()
     expect(names).toEqual(['toolCall'])
     expect(commandsFor('submitToolResult')).toHaveLength(1)
@@ -1304,7 +1306,8 @@ describe('logs', () => {
 
   it('logs only the id and target of a delegation', async () => {
     await running(LOGGED)
-    emitEvent('engine-1.liveNode', 'delegationCreated', {
+    // `request` stands for content the SDK could add later.
+    emitUncheckedEvent('engine-1.liveNode', 'delegationCreated', {
       delegationId: 'd1',
       target: 'client',
       request: 'Make it crimson.',
@@ -1332,8 +1335,8 @@ describe('logs', () => {
     )
   })
 
-  it('logs errors', () => {
-    const toolkit = initialized()
+  it('logs errors', async () => {
+    const toolkit = await running()
     toolkit.addErrorListener(() => {})
     emitEvent('engine-1.liveNode', 'error', { message: 'boom' })
     emitEvent('engine-1.liveNode', 'sessionDisconnected', {
@@ -1912,7 +1915,7 @@ describe('event dispatch', () => {
     const names: string[] = []
     toolkit.addEventListener('live', (e) => names.push(e.name))
     emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'Hi' })
-    emitEvent('engine-1.somethingElse', 'inputTranscriptDelta', { delta: 'x' })
+    emitUncheckedEvent('engine-1.somethingElse', 'inputTranscriptDelta', { delta: 'x' })
     expect(names).toEqual(['inputTranscriptDelta'])
   })
 

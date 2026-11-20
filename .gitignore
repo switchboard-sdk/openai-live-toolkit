@@ -88,6 +88,10 @@ Podfile.lock
 # (podspec prepare_command). Never committed; re-fetched on a clean checkout.
 ios/Frameworks/
 
+# The SDK schema the Jest suite checks events against — downloaded by
+# scripts/download-sdk-schema.sh.
+.switchboard/
+
 # Swift Package Manager
 .build/
 .swiftpm/
