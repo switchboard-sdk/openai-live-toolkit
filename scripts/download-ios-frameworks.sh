@@ -6,8 +6,8 @@
 # Fetches the public Switchboard SDK builds. The downloaded binaries are
 # git-ignored and re-fetched on a clean checkout.
 #
-# SWITCHBOARD_BUILD picks the build as <channel>/<version>: "develop/3.3.0"
-# (default) or "release/<version>".
+# SWITCHBOARD_BUILD picks the build as <channel>/<version>: "release/3.3.0"
+# (default) or "develop/<version>".
 #
 # SWITCHBOARD_LOCAL_BUILD=<switchboard-sdk checkout>/out copies the packages
 # built there instead. Packages it doesn't have are still downloaded.
@@ -17,7 +17,7 @@
 #   ios/Frameworks/<Package>/ios/<Package>.xcframework (binary)
 set -euo pipefail
 
-SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-develop/3.3.0}"
+SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-release/3.3.0}"
 PUBLIC_URL="https://switchboard-sdk-public.s3.amazonaws.com/builds"
 
 PACKAGES=(SwitchboardSDK SwitchboardOnnx SwitchboardSileroVAD SwitchboardOpenAI)

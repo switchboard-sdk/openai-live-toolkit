@@ -11,10 +11,10 @@ On Android, Gradle gets the libraries from the Synervoz Maven repository instead
 
 `pod install` runs `scripts/download-ios-frameworks.sh`, which downloads `SwitchboardSDK`, `SwitchboardOpenAI`, and `SwitchboardSileroVAD` with `SwitchboardOnnx` (for idle mode) from the public Switchboard SDK builds into `ios/Frameworks/`.
 
-By default it fetches the latest 3.3.0 development build, `develop/3.3.0`. To use another build, set `SWITCHBOARD_BUILD` (`develop/<version>` or `release/<version>`) before installing:
+By default it fetches the Switchboard SDK 3.3.0 release, `release/3.3.0`. To use another build, set `SWITCHBOARD_BUILD` (`develop/<version>` or `release/<version>`) before installing:
 
 ```sh
-SWITCHBOARD_BUILD=release/<version> bundle exec pod install
+SWITCHBOARD_BUILD=develop/<version> bundle exec pod install
 ```
 
 Downloads are skipped when the requested build is already present, so a newer `develop` build isn't picked up on its own. CocoaPods only runs the script when it first installs the pod, so after changing `SWITCHBOARD_BUILD`, or to get a newer `develop`, delete `ios/Frameworks/` in the toolkit, run `npm run ios:frameworks` (from the toolkit checkout), then `pod install`.
@@ -31,7 +31,7 @@ Downloads are skipped when the requested build is already present, so a newer `d
 
 ## Android setup
 
-The C++ TurboModule is compiled in the app's native build and links the Switchboard SDK through Prefab. The toolkit depends on the SDK and its OpenAI extension, and on Silero VAD with Onnx (for idle mode), version 3.3.0, from the Synervoz Maven repository. Set `switchboardVersion` in the root `ext` block, next to the NDK below, to use another version. Until 3.3.0 is released, Maven's 3.3.0 is the latest development build. Gradle keeps the one it downloaded first, so run `./gradlew --refresh-dependencies` to get a newer one.
+The C++ TurboModule is compiled in the app's native build and links the Switchboard SDK through Prefab. The toolkit depends on the SDK and its OpenAI extension, and on Silero VAD with Onnx (for idle mode), version 3.3.0, from the Synervoz Maven repository. Set `switchboardVersion` in the root `ext` block, next to the NDK below, to use another version.
 
 The app needs four changes:
 
