@@ -25,7 +25,6 @@ export function makeRpcResponse(result?: unknown, error?: RPCResponse['error']):
 export const native = NativeOpenAILiveToolkit as unknown as {
   processCommand: jest.Mock<string, [string]>
   requestMicrophonePermission: jest.Mock<Promise<boolean>, []>
-  isSpeakerIsolationSupported: jest.Mock<boolean, []>
   startLogFile: jest.Mock<void, [string]>
   log: jest.Mock<void, [string]>
   exportLogFile: jest.Mock<string, []>

@@ -7,15 +7,14 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - `OpenAILiveToolkitProvider`, `useOpenAILiveToolkit` and `useTool` for full-duplex GPT-Live voice agents on iOS 15.1 and later.
-- Optional Quail speaker isolation, switchable at runtime. Linked with `OPENAI_LIVE_AICOUSTICS=1` at `pod install`.
 - Tools through Responses delegation.
 - A grouped live transcript of both speakers.
 - Context actions: `addContext`, `say`. The model is told not to mention context unless the user asks.
-- Example app with a transcript, isolation toggle, mute and two tools.
+- Example app with a transcript, mute and two tools.
 - `transport` prop: `'webrtc'` by default, where the Switchboard backend creates the session and the app holds no OpenAI key; `'websocket'` with `openAIApiKey`.
 - `SWITCHBOARD_LOCAL_BUILD` for frameworks built from a `switchboard-sdk` checkout.
 - `apiUrl` prop for another Switchboard backend.
-- Android support, without speaker isolation: the Switchboard SDK comes from the Synervoz Maven repository, a microphone foreground service keeps the conversation going in the background, and the example app has an Android target.
+- Android support: the Switchboard SDK comes from the Synervoz Maven repository, a microphone foreground service keeps the conversation going in the background, and the example app has an Android target.
 - `idleTimeoutMs`: closes the session during silences and reopens it, forked from the closed one, when the user speaks.
 - `continueConversation`: `start()` after `stop()` continues the conversation, forked from the session the stop closed, and `start({ continueSessionId })` continues a session the app saved before it was killed. OpenAI stores each session while it's on. `sessionId` and `newConversation()` on the hook; the example app resumes a conversation from the last 24 hours.
 - `logFile`, `logConversation` and `shareLogs()`: the SDK's log and the toolkit's events, optionally with the conversation, in a file in the caches directory, shared through the share sheet. The log starts with the app's name, version and build, the OS version, the device model and the SDK version. On iOS the log has the engine's state (running, interrupted, failed, stopped, and why) and its route. The example app has a Share logs link.

@@ -61,10 +61,9 @@
   <rect x="210" y="265" width="550" height="210" rx="10" class="sb-group"/>
   <text x="226" y="287" class="group sb-text">Switchboard · openai-live-toolkit and the SDK</text>
   <rect x="230" y="302" width="240" height="95" rx="8" class="sb-node"/>
-  <text x="350" y="330" class="name sb-text">Audio engine</text>
-  <text x="350" y="350" class="sub sb-text">echo cancellation</text>
-  <text x="350" y="368" class="sub sb-text">optional speaker isolation (iOS)</text>
-  <text x="350" y="386" class="sub sb-text">voice detection for idle mode</text>
+  <text x="350" y="338" class="name sb-text">Audio engine</text>
+  <text x="350" y="358" class="sub sb-text">echo cancellation</text>
+  <text x="350" y="376" class="sub sb-text">voice detection for idle mode</text>
   <rect x="540" y="307" width="200" height="68" rx="8" class="sb-node"/>
   <text x="640" y="336" class="name sb-text code">OpenAI.Live</text>
   <text x="640" y="357" class="sub sb-text">WebRTC or WebSocket</text>

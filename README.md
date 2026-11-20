@@ -2,7 +2,7 @@
 
 OpenAI's GPT-Live (`gpt-live-1`) is a full-duplex voice model. It listens while it speaks and decides for itself when to take a turn, when to back off, and when someone has interrupted it. There is no turn detection to configure and no barge-in to tune. Conversations feel closer to talking with a person.
 
-Switchboard's OpenAI Live Toolkit (`@synervoz/openai-live-toolkit`) puts that model in a React Native app. One provider and two hooks handle the GPT-Live session, microphone and speaker I/O, platform echo cancellation, tool calls into your app, and a live transcript of both sides. Optional on-device speaker isolation keeps other voices in the room from reaching the model. It's built on the [Switchboard SDK](https://docs.switchboard.audio/).
+Switchboard's OpenAI Live Toolkit (`@synervoz/openai-live-toolkit`) puts that model in a React Native app. One provider and two hooks handle the GPT-Live session, microphone and speaker I/O, platform echo cancellation, tool calls into your app, and a live transcript of both sides. It's built on the [Switchboard SDK](https://docs.switchboard.audio/).
 
 | Platform | Status    |
 | -------- | --------- |
@@ -13,7 +13,7 @@ Switchboard's OpenAI Live Toolkit (`@synervoz/openai-live-toolkit`) puts that mo
 
 **▶ [Watch the demo on Loom](https://www.loom.com/share/24891dc7c0a74a3c9e3489d80a08f7fd)** (3½ min)
 
-The [example app](example/README.md) running on an iPhone. It opens with talking over the model mid-answer, which GPT-Live handles without any barge-in settings. Then "what time is it?" and "make the background dark blue" run through two `useTool` hooks while the conversation continues. It closes on speaker isolation with someone else talking nearby: with it off, the transcript picks up the other voice, and with it on, only yours.
+The [example app](example/README.md) running on an iPhone. It opens with talking over the model mid-answer, which GPT-Live handles without any barge-in settings. Then "what time is it?" and "make the background dark blue" run through two `useTool` hooks while the conversation continues.
 
 ## What the GPT-Live API leaves out
 
@@ -73,25 +73,6 @@ That is a working voice agent, tool call included. `start()` requests the microp
 
 The audio engine, the `OpenAI.Live` node and the toolkit's provider run on the phone. Audio, events and tool calls share one live session with OpenAI, so a tool call never leaves the conversation. With the default `webrtc` transport, the Switchboard backend sets up each session with your Switchboard app's OpenAI key, and the app ships without one ([Credentials](docs/getting-started.md#credentials)). [Tools](docs/tools.md) covers how delegation works.
 
-## Other voices in the room
-
-Because GPT-Live listens all the time, everything the microphone picks up is you as far as the model is concerned. A podcast playing, a colleague on a call at the next desk, a TV in the background: the model hears a second voice talking continuously, decides you haven't finished, and stops taking turns. In our tests with a competing talker, the model answered about one prompt in ten.
-
-Speaker isolation fixes that on the device. ai-coustics Quail separates the main talker from the rest before the audio leaves the phone, so the model hears only the person holding it. With it on, the model answered six to ten prompts in ten in the same tests.
-
-```
-mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → speaker
-```
-
-It's a runtime switch, applied to the live session:
-
-```tsx
-const { speakerIsolation } = useOpenAILiveToolkit()
-speakerIsolation.setEnabled(true)
-```
-
-Speaker isolation is optional and iOS only. It needs an ai-coustics license key and the AICoustics Switchboard extension, which is in early access ([hello@synervoz.com](mailto:hello@synervoz.com)) and has no Android build. Without it the graph runs `mic → mono → OpenAI.Live → speaker` and `speakerIsolation.available` is false. See [Getting started](docs/getting-started.md#speaker-isolation).
-
 ## Tools
 
 `useTool` scales up to anything your app can do. It takes JSON Schema parameters and can change state or call your backend. Register a `set_background_color` tool and "make the background dark blue" repaints the screen. Handlers run while the conversation continues, so a slow one doesn't freeze the voice. See [Tools](docs/tools.md) for how delegation works, dynamic tool sets, and what happens when a handler throws.
@@ -101,15 +82,14 @@ Speaker isolation is optional and iOS only. It needs an ai-coustics license key 
 - **The OpenAI key stays on the backend.** By default the session runs over WebRTC, and the Switchboard backend creates it with your Switchboard app's OpenAI key, so the app ships without one. The `websocket` transport needs the key in the app.
 - **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends, or set `idleTimeoutMs` to close the session during silences and reopen it when the user speaks ([Idle mode](docs/getting-started.md#idle-mode)).
 - **iOS 15.1**, React Native's minimum. Android needs API 24 and an app built with NDK 29 ([Android setup](docs/getting-started.md#android-setup)).
-- **Physical device with AICoustics.** Its framework has no simulator slice. Everything else runs in the simulator on Apple silicon Macs.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md) covers install, frameworks, speaker isolation, iOS and Android setup, and credentials.
+- [Getting started](docs/getting-started.md) covers install, frameworks, iOS and Android setup, and credentials.
 - [Tools](docs/tools.md) covers `useTool`, delegation, dynamic tool sets, and tool errors.
 - [Media](docs/media.md) covers playing radio and podcasts alongside the conversation, the model's media tools, and Now Playing.
 - [API reference](docs/api-reference.md) covers the provider, the `useOpenAILiveToolkit()` hook, every export, and the error codes.
-- [Example app](example/README.md) is a complete screen with a transcript, the isolation toggle, and two tools.
+- [Example app](example/README.md) is a complete screen with a transcript, mute, and two tools.
 - The [`OpenAI.Live` node](https://docs.switchboard.audio/extensions/openai/openai-live-node/) in the Switchboard docs is what the toolkit runs on. Use it directly in native iOS, Android, macOS and Linux apps.
 
 ## Questions

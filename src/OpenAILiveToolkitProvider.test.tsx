@@ -28,7 +28,6 @@ const CREDS = {
   appSecret: 'secret-1',
   transport: 'websocket' as const,
   openAIApiKey: 'sk-1',
-  aiCousticsLicenseKey: 'aic-1',
 }
 
 function renderProvider(
@@ -46,8 +45,6 @@ beforeEach(() => {
   jest.clearAllMocks()
   toolkit.initError = null
   toolkit.isRunning = false
-  toolkit.isSpeakerIsolationSupported = true
-  toolkit.isSpeakerIsolationAvailable = true
   toolkit.start.mockImplementation(() => Promise.resolve())
   toolkit.requestMicrophonePermission.mockImplementation(() => Promise.resolve(true))
   toolkit.isBluetoothConnected.mockReturnValue(false)
@@ -59,7 +56,6 @@ describe('initialization', () => {
       apiUrl: 'https://example.switchboard.audio',
       instructions: 'Be terse.',
       voice: 'cedar',
-      speakerIsolation: false,
       delegateModel: 'gpt-6',
       media: { loudness: -14 },
     })
@@ -71,7 +67,6 @@ describe('initialization', () => {
         voice: 'cedar',
         model: 'gpt-live-1',
         delegateModel: 'gpt-6',
-        speakerIsolation: false,
         media: { loudness: -14 },
       })
     )
@@ -88,7 +83,6 @@ describe('initialization', () => {
       model: 'gpt-live-1',
       muted: false,
       bluetooth: { connected: false, microphone: 'phone' },
-      speakerIsolation: { supported: true, available: true, enabled: true },
     })
   })
 
@@ -114,19 +108,6 @@ describe('initialization', () => {
     expect(toolkit.addOtherAppsDuckListener).toHaveBeenLastCalledWith(listener)
     result.current.setOtherAudioResumable(true)
     expect(toolkit.setOtherAudioResumable).toHaveBeenCalledWith(true)
-  })
-
-  it('reports isolation as unavailable when the engine has no license key', () => {
-    toolkit.isSpeakerIsolationAvailable = false
-    const { result } = renderProvider()
-    expect(result.current.speakerIsolation.available).toBe(false)
-  })
-
-  it('reports isolation as unsupported when the build has no AICoustics', () => {
-    toolkit.isSpeakerIsolationSupported = false
-    toolkit.isSpeakerIsolationAvailable = false
-    const { result } = renderProvider()
-    expect(result.current.speakerIsolation).toMatchObject({ supported: false, available: false })
   })
 
   it('throws for a blank Switchboard credential', () => {
@@ -403,18 +384,16 @@ describe('conversation', () => {
 })
 
 describe('setters delegate and stay reactive', () => {
-  it('instructions, voice, isolation, Bluetooth, mute, voice processing and volume', () => {
+  it('instructions, voice, Bluetooth, mute, voice processing and volume', () => {
     const { result } = renderProvider()
     act(() => result.current.setInstructions('New prompt'))
     act(() => result.current.setVoice('cedar'))
-    act(() => result.current.speakerIsolation.setEnabled(false))
     act(() => result.current.bluetooth.setMicrophone('bluetooth'))
     act(() => result.current.setMuted(true))
     act(() => result.current.setVoiceProcessing(false))
     act(() => result.current.setVoiceVolume(0.8))
     expect(toolkit.setInstructions).toHaveBeenCalledWith('New prompt')
     expect(toolkit.setVoice).toHaveBeenCalledWith('cedar')
-    expect(toolkit.setSpeakerIsolation).toHaveBeenCalledWith(false)
     expect(toolkit.setMicrophone).toHaveBeenCalledWith('bluetooth')
     expect(toolkit.setMuted).toHaveBeenCalledWith(true)
     expect(toolkit.setVoiceProcessing).toHaveBeenCalledWith(false)
@@ -426,7 +405,6 @@ describe('setters delegate and stay reactive', () => {
       muted: true,
       voiceProcessing: false,
       voiceVolume: 0.8,
-      speakerIsolation: { enabled: false },
     })
   })
 

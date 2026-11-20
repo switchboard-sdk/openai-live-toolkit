@@ -22,9 +22,6 @@ export interface Spec extends TurboModule {
   /** Request microphone permission; resolves to whether it's granted. */
   readonly requestMicrophonePermission: () => Promise<boolean>
 
-  /** Whether this build links the AICoustics extension (opt-in at `pod install`). */
-  readonly isSpeakerIsolationSupported: () => boolean
-
   /** Absolute path to the app's caches directory, which isn't backed up. */
   readonly getCachePath: () => string
 

@@ -10,7 +10,6 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | --- | --- | --- |
 | `transport` | `'webrtc'` | `'webrtc'`: the Switchboard backend creates the session with the app's OpenAI key. `'websocket'`: straight to OpenAI with `openAIApiKey`. Fixed once the engine is built. See [Credentials](getting-started.md#credentials). |
 | `openAIApiKey` | — | Required to start with `'websocket'`. Ignored with `'webrtc'`. |
-| `aiCousticsLicenseKey` | — | Enables speaker isolation in a build that links AICoustics. |
 | `appId`, `appSecret` | demo credentials | Switchboard credentials. The demo credentials are rotated regularly; [register your own](https://console.switchboard.audio/register) for an app you ship. A blank string throws. |
 | `apiUrl` | production | Switchboard backend URL. The SDK only accepts `https://<host>.switchboard.audio`. |
 | `instructions` | `''` | System prompt. |
@@ -18,7 +17,6 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `model` | `'gpt-live-1'` | Fixed once the engine is built. |
 | `delegateModel` | `'gpt-5.5'` | Responses model that runs delegated work and tools. |
 | `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
-| `speakerIsolation` | `true` | Start with Quail on, when it's available. |
 | `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
 | `wakeGraceMs` | `5000` | After a wake, close again after this long unless the model replies. Capped at `idleTimeoutMs`; `0` turns it off. |
 | `continueConversation` | `false` | Continue the conversation when a session reopens: after a stop, or from a saved `sessionId` after the app was killed. While on, OpenAI stores each session. See [Continuing a conversation](getting-started.md#continuing-a-conversation). |
@@ -55,7 +53,6 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `say(text)` | Content for the model to say aloud (it may paraphrase). |
 | `voice`, `setVoice(voice)` | Fixed per session, like `setInstructions`. |
 | `model` | Read-only. |
-| `speakerIsolation` | `{ supported, available, enabled, setEnabled }`. `supported`: the build links AICoustics. `available`: supported and a license key was given. Applied live. See [Speaker isolation](getting-started.md#speaker-isolation). |
 | `bluetooth` | iOS: `{ connected, microphone, setMicrophone }`. `connected`: a Bluetooth headset, car or speaker is in use or has a microphone; offer the microphone choice while it's true. `setMicrophone('bluetooth' \| 'phone')` applies live; audio restarts briefly. `connected` is always false on Android. |
 | `muted`, `setMuted(muted)` | Stops the model hearing the mic. Kept across sessions. |
 | `voiceVolume`, `setVoiceVolume(volume)` | How loud the model's voice plays, 0 to 1. The default, 0.5, lifts it 6 dB to about music level; 1 is +12 dB. A limiter on the output keeps it from clipping. Applied live. |
@@ -73,7 +70,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 
 ## `useVoiceLevels(listener)`
 
-Calls `listener` with `{ input, output }` every 50 ms while the engine runs and the app isn't in the background, then once with zeros when that ends. Both are 0 to 1 on a decibel scale, the RMS over the last 100 ms from -60 dBFS (0) to 0 dBFS (1), so speech sits around 0.5–0.7: `input` is what the model hears, after speaker isolation, and `output` is the model's voice before the voice volume. It doesn't re-render; drive an `Animated.Value` from it.
+Calls `listener` with `{ input, output }` every 50 ms while the engine runs and the app isn't in the background, then once with zeros when that ends. Both are 0 to 1 on a decibel scale, the RMS over the last 100 ms from -60 dBFS (0) to 0 dBFS (1), so speech sits around 0.5–0.7: `input` is what the model hears, and `output` is the model's voice before the voice volume. It doesn't re-render; drive an `Animated.Value` from it.
 
 ## `useTool(tool)`
 

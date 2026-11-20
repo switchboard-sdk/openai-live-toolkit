@@ -33,8 +33,6 @@ export const openAILiveToolkit: Record<string, any> = {
     }
   }),
   isRunning: false,
-  isSpeakerIsolationSupported: true,
-  isSpeakerIsolationAvailable: true,
   initError: null as string | null,
   start: jest.fn(() => Promise.resolve()),
   stop: jest.fn(),
@@ -45,7 +43,6 @@ export const openAILiveToolkit: Record<string, any> = {
   addContext: jest.fn(() => true),
   say: jest.fn(() => true),
   setVoice: jest.fn(),
-  setSpeakerIsolation: jest.fn(),
   setMicrophone: jest.fn(),
   setVoiceProcessing: jest.fn(),
   voiceVolume: 0.5,

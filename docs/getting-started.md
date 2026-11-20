@@ -21,29 +21,13 @@ SWITCHBOARD_BUILD=release/<version> bundle exec pod install
 
 Downloads are skipped when the requested build is already present, so a newer `develop` build isn't picked up on its own. CocoaPods only runs the script when it first installs the pod, so after changing `SWITCHBOARD_BUILD`, or to get a newer `develop`, delete `ios/Frameworks/` in the toolkit, run `npm run ios:frameworks` (from the toolkit checkout), then `pod install`.
 
-## Speaker isolation
-
-Speaker isolation is optional and off by default. It needs two things:
-
-1. **The AICoustics extension.** It's in early access ([hello@synervoz.com](mailto:hello@synervoz.com)), so it's only linked when you ask for it, from a local Switchboard SDK build that has it:
-
-   ```sh
-   SWITCHBOARD_LOCAL_BUILD=/path/to/switchboard-sdk/out OPENAI_LIVE_AICOUSTICS=1 bundle exec pod install
-   ```
-
-   Set both on every `pod install`; without them the pod is rebuilt without AICoustics. If the framework doesn't appear, run the same variables with `npm run ios:frameworks` from the toolkit checkout first.
-
-2. **An ai-coustics license key**, passed as `aiCousticsLicenseKey`.
-
-With both, `speakerIsolation.available` is true and Quail sits in front of the model. `speakerIsolation.supported` tells you whether the build has the extension, so the app can say which part is missing. A key given to a build without the extension is ignored with a warning.
-
 ## iOS setup
 
 - **iOS 15.1 or later**, React Native's minimum.
 - **Microphone string.** Add `NSMicrophoneUsageDescription` to `Info.plist`.
 - **Background audio.** To keep a conversation going with the screen locked or the app in the background, add `audio` to `UIBackgroundModes`. Without it iOS suspends the app, the connection drops, and a new session starts when the app returns. The session keeps billing while backgrounded, so stop the engine when the conversation ends.
 - **Bluetooth.** With a Bluetooth headset, car or speaker connected, the model hears the phone's microphone and the voice plays in high quality (A2DP) by default, which suits a phone mounted nearby, as in a car. `microphone: 'bluetooth'`, or `bluetooth.setMicrophone` on the hook while running, uses the device's microphone instead, with call-quality audio (HFP), for a phone in a pocket. A device without a microphone, like a speaker, isn't used then. `bluetooth.connected` tells when to offer the choice; keep offering it while `'bluetooth'` is picked, since a speaker drops out then.
-- **Simulator.** Works without AICoustics, on Apple silicon Macs only: `SwitchboardOpenAI` has no x86_64 simulator slice. With AICoustics linked, build for a physical iPhone: its xcframework has no simulator slice.
+- **Simulator.** Apple silicon Macs only: `SwitchboardOpenAI` has no x86_64 simulator slice.
 - **New architecture.** The toolkit is a C++ TurboModule; the app must run with the new architecture (the RN default).
 - **Privacy manifest.** The pod ships one declaring the file-timestamp API the frameworks use; it's merged into the app's privacy report automatically.
 
@@ -94,7 +78,6 @@ The rest comes with the library:
 - **Other apps' audio.** Starting the engine takes the audio focus, so other apps pause, or with `mixWithOthers` keep playing, lowered by the system. See [Other apps' audio](#other-apps-audio).
 - **iOS only:** `voiceProcessing`, `echoCancelledInput`, `otherAudioDucking`, `duckOtherApps`, and Now Playing for media (`nowPlayingControls`).
 - **Offline notice.** `offlineNotice` speaks with the phone's text-to-speech engine. Most phones have one; on a phone without one the notice is silent, and the rest of it (lowering media, telling the model) still works.
-- **Speaker isolation** isn't available: there is no Android build of the AICoustics extension.
 
 The emulator works for arm64 and x86_64 images.
 
@@ -133,17 +116,16 @@ The provider's `transport` prop sets how the session reaches GPT-Live:
 | `appId`, `appSecret` | no | Switchboard credentials. Fall back to the demo credentials, which are rotated regularly. |
 | `apiUrl` | no | Switchboard backend URL. Defaults to production. Anything other than `https://<host>.switchboard.audio` fails `initialize`. |
 | `openAIApiKey` | with `websocket` | `start()` fails with `MISSING_API_KEY` without one. Ignored with `webrtc`. |
-| `aiCousticsLicenseKey` | no | Enables speaker isolation in a build that links AICoustics. Without either the graph has no Quail node. |
 
 The example app reads these from `example/.env` with `react-native-dotenv`. That keeps them out of source control, but not out of the app: the values are compiled into its JavaScript bundle.
 
 ## What runs
 
 ```
-mic → mono → 48→16 kHz → Quail → 16→48 kHz → OpenAI.Live → volume → mixer → limiter → speaker
+mic → mono → OpenAI.Live → volume → mixer → limiter → speaker
 ```
 
-Without speaker isolation the resamplers and Quail are left out: `mic → mono → OpenAI.Live → volume → mixer → limiter → speaker`. The volume is the model's voice volume, and the limiter keeps it from clipping. With [media](media.md) on, a media player plays into the mixer too.
+The volume is the model's voice volume, and the limiter keeps it from clipping. With [media](media.md) on, a media player plays into the mixer too.
 
 The engine runs at 48 kHz with platform echo cancellation: voice processing on iOS, the voice-communication input on Android. The session opens when the engine starts and closes when it stops; GPT-Live bills per second of session. Starting again begins a new conversation, unless `continueConversation` is set (see [Continuing a conversation](#continuing-a-conversation)).
 
@@ -152,14 +134,14 @@ The engine runs at 48 kHz with platform echo cancellation: voice processing on i
 Set `idleTimeoutMs` on the provider to stop paying for silence. Once nobody has talked for that long (no speech from the user, nothing from the model, no tool running), the session closes and `connectionStatus` becomes `'idle'`. The engine keeps running, and a Silero VAD on the input the model hears reopens the session when the user speaks:
 
 ```
-mic → mono → [Quail] → splitter → OpenAI.Live → speaker
-                          └─────→ Silero VAD
+mic → mono → splitter → OpenAI.Live → speaker
+                └─────→ Silero VAD
 ```
 
 - **The conversation continues.** The new session forks the closed one, so the model remembers what was said. OpenAI stores sessions while idle mode is on, which forking needs. If the stored session is gone, a new one starts instead.
 - **Nothing is lost while it reopens.** Reopening takes 1–4 s, mostly OpenAI forking the session. The `OpenAI.Live` node keeps what the user says meanwhile, plus a short pre-roll from before the VAD fired, and plays it to the model sped up until it catches up: twice real-time speed with the pitch kept over WebRTC, three times over the WebSocket. The first reply after a wake comes about a second later than usual, more when the fork is slow.
 - **Forks slow down as the conversation grows**, from 1–2 s to 5 s or more over a long drive, nearly all of it on OpenAI's side. A fork still holds the context the closed session was given, so don't give it again: use `setSessionNote` for context that changes, or check `sessionContinued`.
-- **Any voice wakes it**, and some noises: the VAD can't tell the user from a TV or someone nearby, and takes a phone vibrating on a table for speech. Quail doesn't help while the user is silent: it keeps a lone voice, and lets the vibration through. A wake the model doesn't answer closes again after `wakeGraceMs` (5 s by default) instead of a full idle timeout.
+- **Any voice wakes it**, and some noises: the VAD can't tell the user from a TV or someone nearby, and takes a phone vibrating on a table for speech. A wake the model doesn't answer closes again after `wakeGraceMs` (5 s by default) instead of a full idle timeout.
 - **Instructions and voice.** A fork keeps the closed session's instructions and voice, so changing either while idle makes the next session start fresh.
 - **Muted.** Speech doesn't reopen the session while the model is muted.
 
