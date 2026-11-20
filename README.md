@@ -11,7 +11,7 @@ Switchboard's OpenAI Live Toolkit (`@synervoz/openai-live-toolkit`) puts that mo
 
 ## Demo
 
-**▶ [Watch the demo on Loom](https://www.loom.com/share/24891dc7c0a74a3c9e3489d80a08f7fd)** (3½ min)
+**▶ [Watch the demo video](https://youtu.be/fmbrgy4gmVo)** (3½ min)
 
 The [example app](example/README.md) running on an iPhone. It opens with talking over the model mid-answer, which GPT-Live handles without any barge-in settings. Then "what time is it?" and "make the background dark blue" run through two `useTool` hooks while the conversation continues.
 
