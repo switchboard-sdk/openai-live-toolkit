@@ -51,18 +51,6 @@ const ACTIVITY_TAIL_MS = 1000
 // A delegation that hasn't led to speech by now counts as done.
 const THINKING_TIMEOUT_MS = 15_000
 
-/** Speaker isolation (ai-coustics Quail) controls. */
-export interface SpeakerIsolation {
-  /** Whether this build links the AICoustics extension (opt-in at `pod install`; iOS only). */
-  supported: boolean
-  /** Whether the graph has speaker isolation: `supported` and a license key was given. */
-  available: boolean
-  /** Whether it's on. */
-  enabled: boolean
-  /** Turn it on or off. Applied live. */
-  setEnabled: (enabled: boolean) => void
-}
-
 /** iOS Bluetooth controls. */
 export interface BluetoothAudio {
   /**
@@ -151,8 +139,6 @@ export interface OpenAILiveToolkitContextValue {
   setVoice: (voice: OpenAIVoice) => void
   /** The GPT-Live model id. Set once via the provider's `model` prop. */
   model: string
-  /** Speaker isolation controls. */
-  speakerIsolation: SpeakerIsolation
   /** iOS Bluetooth controls: offer the microphone choice while `connected`. */
   bluetooth: BluetoothAudio
   /** Whether the model is prevented from hearing the microphone. */
@@ -222,8 +208,6 @@ export interface OpenAILiveToolkitProviderProps {
   transport?: OpenAILiveTransport
   /** OpenAI API key, for the `websocket` transport. */
   openAIApiKey?: string
-  /** ai-coustics license key. Speaker isolation needs it and a build with AICoustics. */
-  aiCousticsLicenseKey?: string
   /** System prompt. Initial value; also settable via the hook. */
   instructions?: string
   /** Voice (defaults to `'marin'`). Initial value; also settable via the hook. */
@@ -234,8 +218,6 @@ export interface OpenAILiveToolkitProviderProps {
   delegateModel?: string
   /** Instructions for the delegate model. */
   delegateInstructions?: string
-  /** Start with speaker isolation on (default true). Also settable via the hook. */
-  speakerIsolation?: boolean
   /**
    * Close the session after this many ms with nobody talking, and reopen it when the user
    * speaks, continuing the conversation. Off by default. Fixed once initialized.
@@ -310,8 +292,7 @@ export interface OpenAILiveToolkitProviderProps {
 
 /** Initializes the toolkit and exposes its state and controls via {@link useOpenAILiveToolkit}. */
 export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps) {
-  const { appId, appSecret, apiUrl, transport, openAIApiKey, aiCousticsLicenseKey, children } =
-    props
+  const { appId, appSecret, apiUrl, transport, openAIApiKey, children } = props
   if (appId !== undefined && !appId.trim()) {
     throw new Error('OpenAILiveToolkitProvider: appId is required')
   }
@@ -340,9 +321,6 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
   const [instructions, setInstructionsState] = useState(props.instructions ?? '')
   const [voice, setVoiceState] = useState<OpenAIVoice>(props.voice ?? DEFAULT_VOICE)
   const [model] = useState(props.model ?? DEFAULT_MODEL)
-  const [isolationSupported, setIsolationSupported] = useState(false)
-  const [isolationAvailable, setIsolationAvailable] = useState(false)
-  const [isolationEnabled, setIsolationEnabled] = useState(props.speakerIsolation ?? true)
   const [muted, setMutedState] = useState(false)
   const [voiceProcessing, setVoiceProcessingState] = useState(true)
   const [voiceVolume, setVoiceVolumeState] = useState(toolkitRef.current.voiceVolume)
@@ -370,13 +348,11 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       apiUrl,
       transport,
       openAIApiKey,
-      aiCousticsLicenseKey,
       instructions,
       voice,
       model,
       delegateModel: props.delegateModel,
       delegateInstructions: props.delegateInstructions,
-      speakerIsolation: isolationEnabled,
       idleTimeoutMs: props.idleTimeoutMs,
       wakeGraceMs: props.wakeGraceMs,
       continueConversation: props.continueConversation,
@@ -393,8 +369,6 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       microphone,
     })
     setIsRunning(toolkit.isRunning)
-    setIsolationSupported(toolkit.isSpeakerIsolationSupported)
-    setIsolationAvailable(toolkit.isSpeakerIsolationAvailable)
     setBluetoothConnected(toolkit.isBluetoothConnected())
     const bluetoothSub = toolkit.addBluetoothListener(setBluetoothConnected)
     setOtherAppsDucked(toolkit.otherAppsDucked)
@@ -492,7 +466,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     }
     // Settings are init-only seeds here; runtime changes go through the setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appId, appSecret, apiUrl, transport, openAIApiKey, aiCousticsLicenseKey, reportError])
+  }, [appId, appSecret, apiUrl, transport, openAIApiKey, reportError])
 
   const requestMicrophonePermission = useCallback(async (): Promise<boolean> => {
     try {
@@ -575,11 +549,6 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     toolkitRef.current?.setVoice(next)
   }, [])
 
-  const setSpeakerIsolationEnabled = useCallback((next: boolean) => {
-    setIsolationEnabled(next)
-    toolkitRef.current?.setSpeakerIsolation(next)
-  }, [])
-
   const setMuted = useCallback((next: boolean) => {
     setMutedState(next)
     toolkitRef.current?.setMuted(next)
@@ -646,12 +615,6 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
     voice,
     setVoice,
     model,
-    speakerIsolation: {
-      supported: isolationSupported,
-      available: isolationAvailable,
-      enabled: isolationEnabled,
-      setEnabled: setSpeakerIsolationEnabled,
-    },
     bluetooth: { connected: bluetoothConnected, microphone, setMicrophone },
     muted,
     setMuted,

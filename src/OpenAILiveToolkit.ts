@@ -58,12 +58,6 @@ export interface OpenAILiveToolkitInitializeOptions {
   transport?: OpenAILiveTransport
   /** OpenAI API key. Required by {@link OpenAILiveToolkit.start} for the `websocket` transport. */
   openAIApiKey?: string
-  /**
-   * ai-coustics license key. Speaker isolation needs it and a build that links the
-   * AICoustics extension. Without both the graph is built without it and
-   * {@link OpenAILiveToolkit.setSpeakerIsolation} does nothing.
-   */
-  aiCousticsLicenseKey?: string
   /** System prompt. Fixed per session; see {@link OpenAILiveToolkit.setInstructions}. */
   instructions?: string
   /** Voice the model speaks with. Defaults to `'marin'`. */
@@ -74,8 +68,6 @@ export interface OpenAILiveToolkitInitializeOptions {
   delegateModel?: string
   /** Instructions for the delegate model. */
   delegateInstructions?: string
-  /** Start with speaker isolation on. Defaults to true. Needs {@link aiCousticsLicenseKey}. */
-  speakerIsolation?: boolean
   /**
    * Close the session after this many ms with nobody talking, and reopen it when the user
    * speaks, continuing the conversation. Nothing is billed while it's closed. Off by default.
@@ -214,8 +206,7 @@ export type OtherAppsDuckListener = (ducked: boolean, othersCanPlay: boolean) =>
 /**
  * How loud the user and the model are, from 0 to 1 on a decibel scale: the RMS over the last
  * 100 ms, with -60 dBFS and below at 0 and 0 dBFS at 1, so speech sits around 0.5–0.7. `input` is
- * what the model hears, after speaker isolation; `output` is the model's voice, before the voice
- * volume.
+ * what the model hears; `output` is the model's voice, before the voice volume.
  */
 export interface VoiceLevels {
   input: number
@@ -268,7 +259,6 @@ interface ToolCall {
 const LIVE_NODE = 'liveNode'
 // The model's voice, for the output meter and features to tap.
 const LIVE_SPLITTER_NODE = 'liveSplitterNode'
-const ISOLATION_NODE = 'speakerIsolationNode'
 const VAD_NODE = 'vadNode'
 // Recorders for diagnosticAudioSeconds, by the name of their file.
 const DIAGNOSTIC_RECORDERS = {
@@ -280,8 +270,8 @@ const DIAGNOSTIC_RECORDERS = {
 const NOTICE_NODE = 'noticePlayerNode'
 const VOICE_VOLUME_NODE = 'voiceVolumeNode'
 const LIMITER_NODE = 'limiterNode'
-// Meters for voice levels: what the model hears, after isolation, and the model's voice before
-// the volume. The input one hangs off its own splitter.
+// Meters for voice levels: what the model hears, and the model's voice before the volume. The
+// input one hangs off its own splitter.
 const INPUT_SPLITTER_NODE = 'inputSplitterNode'
 const INPUT_METER_NODE = 'inputMeterNode'
 const OUTPUT_METER_NODE = 'outputMeterNode'
@@ -297,10 +287,7 @@ const NODE_EVENT_TYPE: Record<string, OpenAILiveToolkitEventType> = {
   [VAD_NODE]: 'vad',
 }
 
-// The graph runs at 48 kHz; Quail wants 16 kHz, so it sits between two resamplers.
 const GRAPH_SAMPLE_RATE = 48000
-const QUAIL_SAMPLE_RATE = 16000
-const QUAIL_MODEL = 'quail_vf_2_1_l_16khz_8xope536_v11.aicmodel'
 const DEFAULT_WAKE_GRACE_MS = 5_000
 
 // How long the engine takes to mix with other apps again, before another app may play; one that
@@ -403,7 +390,7 @@ export function splitContext(text: string, max = MAX_CONTEXT_CHARS): string[] {
 
 /**
  * The Switchboard graph the toolkit runs:
- * microphone → mono → [Quail speaker isolation] → OpenAI.Live → volume → mixer → limiter → speaker.
+ * microphone → mono → OpenAI.Live → volume → mixer → limiter → speaker.
  * The model owns turn-taking. In idle mode a VAD taps the input the model hears, only to
  * tell when the user starts talking again. Features, such as media, add their nodes and play into
  * the mixer; as part of the output, echo cancellation keeps them from the model.
@@ -420,7 +407,6 @@ function buildLiveEngine(
     delegateModel: string
     delegateInstructions: string
   },
-  isolation: { available: boolean; enabled: boolean },
   idleMode: boolean,
   store: boolean,
   otherAudio: { mix: boolean; ducking: OtherAudioDucking },
@@ -445,34 +431,6 @@ function buildLiveEngine(
   nodes.push(...recorders)
   const recorder = (id: string) => (recorders.length > 0 ? [id] : [])
   chain.push(...recorder(DIAGNOSTIC_RECORDERS.mic))
-  if (isolation.available) {
-    nodes.push(
-      {
-        id: 'downResamplerNode',
-        type: 'Switchboard.Resampler',
-        configuration: { inputSampleRate: GRAPH_SAMPLE_RATE, outputSampleRate: QUAIL_SAMPLE_RATE },
-      },
-      {
-        id: ISOLATION_NODE,
-        type: 'AICoustics.SpeechEnhancer',
-        // Settings validated against GPT-Live with a competing talker in the room.
-        configuration: {
-          modelPath: QUAIL_MODEL,
-          enabled: isolation.enabled,
-          vadGated: false,
-          enhancementLevel: 0.7,
-          vadSensitivity: 15,
-          speechHoldDuration: 0.5,
-        },
-      },
-      {
-        id: 'upResamplerNode',
-        type: 'Switchboard.Resampler',
-        configuration: { inputSampleRate: QUAIL_SAMPLE_RATE, outputSampleRate: GRAPH_SAMPLE_RATE },
-      }
-    )
-    chain.push('downResamplerNode', ISOLATION_NODE, 'upResamplerNode')
-  }
   // Idle mode wakes on speech; features such as media follow it too.
   const vad = idleMode || features.some((f) => f.userSpeech)
   if (vad) {
@@ -621,9 +579,6 @@ export function createOpenAILiveToolkit() {
   let transport: OpenAILiveTransport = 'webrtc'
   let openAIApiKey = ''
   let demoCredentials = false
-  let isolationSupported = false
-  let isolationAvailable = false
-  let speakerIsolation = true
   let muted = false
   const session = {
     model: DEFAULT_MODEL,
@@ -868,28 +823,12 @@ export function createOpenAILiveToolkit() {
       )
       openAIApiKey = ''
     }
-    const licenseKey = options.aiCousticsLicenseKey?.trim() ?? ''
-    isolationSupported = NativeOpenAILiveToolkit.isSpeakerIsolationSupported()
-    isolationAvailable = isolationSupported && licenseKey !== ''
-    if (!isolationSupported && licenseKey !== '') {
-      console.warn(
-        '[OpenAILiveToolkit] aiCousticsLicenseKey ignored: this build has no AICoustics extension. ' +
-          (Platform.OS === 'android'
-            ? 'There is no Android build of it yet.'
-            : 'Reinstall pods with OPENAI_LIVE_AICOUSTICS=1 to enable speaker isolation.')
-      )
-    } else if (isolationSupported && licenseKey === '') {
-      console.warn(
-        '[OpenAILiveToolkit] No aiCousticsLicenseKey provided — running without speaker isolation.'
-      )
-    }
 
     session.instructions = options.instructions ?? ''
     session.voice = options.voice ?? DEFAULT_VOICE
     session.model = options.model ?? DEFAULT_MODEL
     session.delegateModel = options.delegateModel ?? DEFAULT_DELEGATE_MODEL
     session.delegateInstructions = options.delegateInstructions ?? ''
-    speakerIsolation = options.speakerIsolation ?? true
     idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
     wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
     continueConversation = options.continueConversation ?? false
@@ -934,9 +873,6 @@ export function createOpenAILiveToolkit() {
       const extensions: Record<string, object> = {
         OpenAI: openAIApiKey === '' ? {} : { apiKey: openAIApiKey },
       }
-      if (isolationAvailable) {
-        extensions.AICoustics = { licenseKey }
-      }
       if (idleTimeoutMs > 0) {
         extensions.Silero = {}
         extensions.Onnx = {}
@@ -960,8 +896,8 @@ export function createOpenAILiveToolkit() {
     const sdkVersion = c.getValue('switchboard', 'versionName').result
     const sdkBuild = c.getValue('switchboard', 'buildNumber').result
     log(
-      `initialize: ${transport}, speaker isolation ${isolationAvailable ? 'available' : 'unavailable'}, ` +
-        `idle timeout ${idleTimeoutMs} ms, SDK ${sdkVersion ?? '?'} (${sdkBuild ?? '?'})`
+      `initialize: ${transport}, idle timeout ${idleTimeoutMs} ms, ` +
+        `SDK ${sdkVersion ?? '?'} (${sdkBuild ?? '?'})`
     )
     // An engine that survived the reload: a running one is adopted, keeping the settings it was
     // built with until release(); an idle one is dropped, so start() builds one with these.
@@ -1133,7 +1069,6 @@ export function createOpenAILiveToolkit() {
           delegateTools(),
           lastWrittenToolsNote,
           session,
-          { available: isolationAvailable, enabled: speakerIsolation },
           idleTimeoutMs > 0,
           idleTimeoutMs > 0 || continueConversation,
           otherAudio,
@@ -1304,15 +1239,6 @@ export function createOpenAILiveToolkit() {
     lastSessionId = null
     if (engineId) {
       client?.setValue(LIVE_NODE, 'voice', next)
-    }
-  }
-
-  /** Turn Quail speaker isolation on or off. Applied live. No-op unless it's available. */
-  function setSpeakerIsolation(enabled: boolean): void {
-    log(`speaker isolation ${enabled ? 'on' : 'off'}`)
-    speakerIsolation = enabled
-    if (engineId && isolationAvailable) {
-      client?.setValue(ISOLATION_NODE, 'enabled', enabled)
     }
   }
 
@@ -2128,7 +2054,6 @@ export function createOpenAILiveToolkit() {
     setSessionNote,
     say,
     setVoice,
-    setSpeakerIsolation,
     setMicrophone,
     setVoiceProcessing,
     setVoiceVolume,
@@ -2163,14 +2088,6 @@ export function createOpenAILiveToolkit() {
     /** Whether idle mode closed the session; it reopens when the user speaks. */
     get isIdle(): boolean {
       return idle
-    },
-    /** Whether this build links the AICoustics extension. Known after {@link initialize}. */
-    get isSpeakerIsolationSupported(): boolean {
-      return isolationSupported
-    },
-    /** Whether the graph includes speaker isolation: a supported build and a license key. */
-    get isSpeakerIsolationAvailable(): boolean {
-      return isolationAvailable
     },
     /** Why the last {@link initialize} was refused by the SDK, or null. */
     get initError(): string | null {

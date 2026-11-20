@@ -19,7 +19,6 @@ const processCommand = jest.fn<string, [string]>(() => '{"jsonrpc":"2.0","id":1,
 const getDocumentsPath = jest.fn<string, []>(() => '/mock/documents')
 const writeFile = jest.fn<boolean, [string, string]>(() => true)
 const requestMicrophonePermission = jest.fn<Promise<boolean>, []>(() => Promise.resolve(true))
-const isSpeakerIsolationSupported = jest.fn<boolean, []>(() => true)
 const getCachePath = jest.fn<string, []>(() => '/mock/caches')
 const startLogFile = jest.fn<void, [string]>()
 const log = jest.fn<void, [string]>()
@@ -141,8 +140,6 @@ export function resetNativeMock(): void {
   writeFile.mockReturnValue(true)
   requestMicrophonePermission.mockReset()
   requestMicrophonePermission.mockResolvedValue(true)
-  isSpeakerIsolationSupported.mockReset()
-  isSpeakerIsolationSupported.mockReturnValue(true)
   getCachePath.mockReset()
   getCachePath.mockReturnValue('/mock/caches')
   startLogFile.mockReset()
@@ -179,7 +176,6 @@ const NativeOpenAILiveToolkitMock = {
   getDocumentsPath,
   writeFile,
   requestMicrophonePermission,
-  isSpeakerIsolationSupported,
   getCachePath,
   startLogFile,
   log,

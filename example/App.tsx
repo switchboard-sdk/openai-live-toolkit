@@ -1,17 +1,15 @@
 /**
- * OpenAILiveToolkit example — a full-duplex GPT-Live voice assistant with
- * optional speaker isolation.
+ * OpenAILiveToolkit example — a full-duplex GPT-Live voice assistant.
  *
  * All orchestration lives in the library. This app wraps itself in
  * <OpenAILiveToolkitProvider> with credentials, and the screen drives it with
- * useOpenAILiveToolkit() — lifecycle, the live transcript, speaker isolation and mute.
+ * useOpenAILiveToolkit() — lifecycle, the live transcript and mute.
  *
  * @format
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -32,7 +30,6 @@ import {
   type MediaPlayback,
 } from '@synervoz/openai-live-toolkit';
 import {
-  AIC_LICENSE_KEY,
   SWITCHBOARD_API_URL,
   SWITCHBOARD_APP_ID,
   SWITCHBOARD_APP_SECRET,
@@ -97,7 +94,6 @@ export default function App(): React.JSX.Element {
         appId={SWITCHBOARD_APP_ID || undefined}
         appSecret={SWITCHBOARD_APP_SECRET || undefined}
         apiUrl={SWITCHBOARD_API_URL}
-        aiCousticsLicenseKey={AIC_LICENSE_KEY}
         instructions={INSTRUCTIONS}
         idleTimeoutMs={IDLE_TIMEOUT_MS}
         continueConversation
@@ -132,7 +128,6 @@ function Screen(): React.JSX.Element {
     newConversation,
     instructions,
     voice,
-    speakerIsolation,
     bluetooth,
     muted,
     setMuted,
@@ -231,24 +226,6 @@ function Screen(): React.JSX.Element {
 
       <View style={styles.section}>
         <Text style={styles.sectionHeader}>Audio</Text>
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Speaker isolation</Text>
-          <Switch
-            value={speakerIsolation.available && speakerIsolation.enabled}
-            onValueChange={speakerIsolation.setEnabled}
-            disabled={!speakerIsolation.available}
-          />
-        </View>
-        {speakerIsolation.available ? null : (
-          <Text style={styles.hint}>
-            {speakerIsolation.supported
-              ? 'Needs an ai-coustics license key. Set AIC_LICENSE_KEY in .env.'
-              : Platform.OS === 'android'
-                ? 'Not available on Android yet.'
-                : 'Needs the AICoustics extension and an ai-coustics license key. ' +
-                  'See the example README.'}
-          </Text>
-        )}
         {/* Also while Bluetooth is picked: a device without a microphone then drops out, and
             this is the way back. */}
         {bluetooth.connected || bluetooth.microphone !== 'phone' ? (

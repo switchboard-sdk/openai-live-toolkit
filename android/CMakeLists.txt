@@ -20,9 +20,6 @@ add_library(react-native-openailivetoolkit SHARED
 
 target_include_directories(react-native-openailivetoolkit PUBLIC "${OPENAILIVETOOLKIT_CPP_DIR}")
 
-# There is no Android build of the AICoustics extension, so no speaker isolation.
-target_compile_definitions(react-native-openailivetoolkit PRIVATE OPENAI_LIVE_TOOLKIT_AICOUSTICS=0)
-
 # Switchboard SDK + extensions via Prefab, from the AARs build.gradle depends on.
 find_package(SwitchboardSDK REQUIRED CONFIG)
 find_package(SwitchboardOpenAI REQUIRED CONFIG)

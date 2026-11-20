@@ -1,6 +1,6 @@
 # Example app
 
-A GPT-Live voice assistant screen: start/stop, an optional speaker isolation toggle, mute, a live transcript of both sides, two tools (`set_background_color`, `get_time`), and idle mode after 15 s of silence.
+A GPT-Live voice assistant screen: start/stop, mute, a live transcript of both sides, two tools (`set_background_color`, `get_time`), and idle mode after 15 s of silence.
 
 ## Setup
 
@@ -28,24 +28,10 @@ npm run android
 
 The first build downloads the Switchboard SDK from the Synervoz Maven repository (see [Android setup](../docs/getting-started.md#android-setup)). Runs on a phone or an arm64/x86_64 emulator.
 
-### Speaker isolation (optional)
-
-The app runs without it; the toggle stays disabled and says what's missing. To turn it on you need an ai-coustics license key and a local Switchboard SDK build with the AICoustics extension, which is in early access ([hello@synervoz.com](mailto:hello@synervoz.com)):
-
-```sh
-# in .env
-AIC_LICENSE_KEY=your-ai-coustics-key
-
-cd ios && SWITCHBOARD_LOCAL_BUILD=/path/to/switchboard-sdk/out OPENAI_LIVE_AICOUSTICS=1 bundle exec pod install && cd ..
-```
-
-AICoustics has no simulator slice, so run on a physical iPhone once it's linked. There is no Android build of it.
-
 `example/` depends on the checkout (`file:..`), so library changes in `src/` show up on reload.
 
 ## Things to try
 
 - Talk over the assistant mid-sentence. GPT-Live handles the interruption itself.
-- With speaker isolation on, play a podcast or a second voice nearby, then turn it off. The model stops taking turns when it hears a competing talker as you.
 - "What time is it?" and "Make the background dark blue" exercise the tools through delegation.
 - Stay quiet for 15 s and the connection shows `idle`. Ask something about the earlier conversation: the session reopens and the model remembers it.

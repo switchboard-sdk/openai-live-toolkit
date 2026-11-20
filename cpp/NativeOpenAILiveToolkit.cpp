@@ -8,14 +8,9 @@
 // Switchboard extensions. Each must be loaded once, before any graph that uses
 // it is built — hence the constructor below. Headers resolve via the per-
 // framework `include/` dirs added to the build's header search paths.
-// AICoustics is opt-in: the podspec defines OPENAI_LIVE_TOOLKIT_AICOUSTICS when
-// it links the extension.
 #include "OnnxExtension.hpp"
 #include "OpenAIExtension.hpp"
 #include "SileroVADExtension.hpp"
-#if OPENAI_LIVE_TOOLKIT_AICOUSTICS
-#include "AICousticsExtension.hpp"
-#endif
 
 namespace facebook::react {
 
@@ -26,9 +21,6 @@ NativeOpenAILiveToolkit::NativeOpenAILiveToolkit(std::shared_ptr<CallInvoker> js
   // Silero VAD runs on Onnx; used by idle mode.
   switchboard::extensions::onnx::OnnxExtension::load();
   switchboard::extensions::silerovad::SileroVADExtension::load();
-#if OPENAI_LIVE_TOOLKIT_AICOUSTICS
-  switchboard::extensions::aicoustics::AICousticsExtension::load();
-#endif
 
   // Forward every SDK event to JS via the codegen-generated emitter.
   switchboard.setEventCallback(
@@ -138,14 +130,6 @@ AsyncPromise<bool> NativeOpenAILiveToolkit::requestMicrophonePermission(jsi::Run
     promise.resolve(granted);
   });
   return promise;
-}
-
-bool NativeOpenAILiveToolkit::isSpeakerIsolationSupported(jsi::Runtime& rt) {
-#if OPENAI_LIVE_TOOLKIT_AICOUSTICS
-  return true;
-#else
-  return false;
-#endif
 }
 
 bool NativeOpenAILiveToolkit::writeFile(jsi::Runtime& rt, std::string path,

@@ -31,7 +31,6 @@ public:
   std::string getCachePath(jsi::Runtime& rt);
   bool writeFile(jsi::Runtime& rt, std::string path, std::string contents);
   AsyncPromise<bool> requestMicrophonePermission(jsi::Runtime& rt);
-  bool isSpeakerIsolationSupported(jsi::Runtime& rt);
   void startLogFile(jsi::Runtime& rt, std::string directory);
   void log(jsi::Runtime& rt, std::string message);
   std::string exportLogFile(jsi::Runtime& rt);

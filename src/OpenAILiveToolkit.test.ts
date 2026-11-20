@@ -49,7 +49,6 @@ import { DEFAULT_SWITCHBOARD_APP_ID, DEFAULT_SWITCHBOARD_APP_SECRET } from './cr
 const { emit, emitBluetooth, emitNetwork, emitOtherAppsDuck, resetNativeMock } = nativeMock
 
 const WEBSOCKET = { ...CREDS, transport: 'websocket' as const, openAIApiKey: 'sk-openai' }
-const WITH_ISOLATION = { ...CREDS, aiCousticsLicenseKey: 'aic-key' }
 
 beforeEach(() => {
   resetNativeMock()
@@ -86,29 +85,6 @@ describe('initialize', () => {
     initialized({ ...CREDS, openAIApiKey: 'sk-openai' })
     expect(commandFor('initialize').params.params.extensions).toEqual({ OpenAI: {} })
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('openAIApiKey ignored'))
-  })
-
-  it('adds the AICoustics extension when a license key is given', () => {
-    const toolkit = initialized(WITH_ISOLATION)
-    expect(commandFor('initialize').params.params.extensions.AICoustics).toEqual({
-      licenseKey: 'aic-key',
-    })
-    expect(toolkit.isSpeakerIsolationAvailable).toBe(true)
-  })
-
-  it('reports speaker isolation unavailable without a license key', () => {
-    const toolkit = initialized()
-    expect(toolkit.isSpeakerIsolationSupported).toBe(true)
-    expect(toolkit.isSpeakerIsolationAvailable).toBe(false)
-  })
-
-  it('leaves AICoustics out when the build lacks it, even with a license key', () => {
-    native.isSpeakerIsolationSupported.mockReturnValue(false)
-    const toolkit = initialized(WITH_ISOLATION)
-    expect(commandFor('initialize').params.params.extensions.AICoustics).toBeUndefined()
-    expect(toolkit.isSpeakerIsolationSupported).toBe(false)
-    expect(toolkit.isSpeakerIsolationAvailable).toBe(false)
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('OPENAI_LIVE_AICOUSTICS=1'))
   })
 
   it('falls back to the default Switchboard credentials when none are passed', () => {
@@ -259,33 +235,7 @@ describe('start guards', () => {
 })
 
 describe('graph', () => {
-  it('runs mic → mono → Quail between resamplers → Live → speaker when isolation is available', async () => {
-    await running(WITH_ISOLATION)
-    expect(graphChain()).toEqual([
-      'inputNode',
-      'multiChannelToMonoNode',
-      'downResamplerNode',
-      'speakerIsolationNode',
-      'upResamplerNode',
-      'inputSplitterNode',
-      'liveNode',
-      'liveSplitterNode',
-      'monoToMultiChannelNode',
-      'voiceVolumeNode',
-      'mixerNode',
-      'limiterNode',
-      'outputNode',
-    ])
-    const quail = graphNodes().find((n) => n.id === 'speakerIsolationNode')
-    expect(quail.type).toBe('AICoustics.SpeechEnhancer')
-    expect(quail.configuration).toMatchObject({
-      enabled: true,
-      vadGated: false,
-      enhancementLevel: 0.7,
-    })
-  })
-
-  it('leaves Quail out without a license key', async () => {
+  it('runs mic → mono → Live → speaker', async () => {
     await running()
     expect(graphChain()).toEqual([
       'inputNode',
@@ -299,13 +249,6 @@ describe('graph', () => {
       'limiterNode',
       'outputNode',
     ])
-  })
-
-  it('builds Quail disabled when seeded off', async () => {
-    await running({ ...WITH_ISOLATION, speakerIsolation: false })
-    expect(graphNodes().find((n) => n.id === 'speakerIsolationNode').configuration.enabled).toBe(
-      false
-    )
   })
 
   it('runs with echo cancellation at 48 kHz', async () => {
@@ -389,18 +332,6 @@ describe('live settings', () => {
     expect(setValuesFor('liveNode', 'voice')).toHaveLength(0)
     toolkit.setVoice('cedar')
     expect(setValuesFor('liveNode', 'voice')[0].params.value).toBe('cedar')
-  })
-
-  it('setSpeakerIsolation toggles the Quail node live', async () => {
-    const toolkit = await running(WITH_ISOLATION)
-    toolkit.setSpeakerIsolation(false)
-    expect(setValuesFor('speakerIsolationNode', 'enabled')[0].params.value).toBe(false)
-  })
-
-  it('setSpeakerIsolation does nothing without a license key', async () => {
-    const toolkit = await running()
-    toolkit.setSpeakerIsolation(false)
-    expect(setValuesFor('speakerIsolationNode', 'enabled')).toHaveLength(0)
   })
 
   it('context actions reach the Live node and report delivery', async () => {

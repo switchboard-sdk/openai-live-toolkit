@@ -4,8 +4,8 @@ import { documentsPath } from './logs'
 export { log } from './logs'
 
 /**
- * OpenAILiveToolkit — full-duplex OpenAI GPT-Live voice agents on iOS and Android, with
- * optional ai-coustics speaker isolation, powered by the Switchboard SDK.
+ * OpenAILiveToolkit — full-duplex OpenAI GPT-Live voice agents on iOS and Android, powered by
+ * the Switchboard SDK.
  *
  * Wrap your app in {@link OpenAILiveToolkitProvider} and drive it with the hooks below;
  * the engine and JSON-RPC transport are internal.
@@ -23,7 +23,6 @@ export type {
   OpenAILiveToolkitContextValue,
   OpenAILiveToolkitConnectionStatus,
   OpenAILiveActivity,
-  SpeakerIsolation,
   BluetoothAudio,
 } from './OpenAILiveToolkitProvider'
 export { useMedia, useMediaPosition, useMediaTools } from './media/hooks'

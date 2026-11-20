@@ -2,17 +2,8 @@ require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
-# Speaker isolation is opt-in: OPENAI_LIVE_AICOUSTICS=1 at `pod install` links the
-# AICoustics extension, which isn't published. The download script reads the same variable.
-aicoustics = ENV["OPENAI_LIVE_AICOUSTICS"] == "1"
-
 # Switchboard SDK + extensions, downloaded into ios/Frameworks/ by the script below.
 switchboard_packages = %w[SwitchboardSDK SwitchboardOnnx SwitchboardSileroVAD SwitchboardOpenAI]
-switchboard_packages << "SwitchboardAICoustics" if aicoustics
-
-# Quail speaker isolation model. The AICoustics node resolves a bare filename
-# against the app's main bundle, so it's shipped as a plain resource.
-quail_model = "quail_vf_2_1_l_16khz_8xope536_v11.aicmodel"
 
 Pod::Spec.new do |s|
   s.name         = "OpenAILiveToolkit"
@@ -33,7 +24,6 @@ Pod::Spec.new do |s|
   # Privacy manifest, aggregated into the app's privacy report. Declares the
   # FileTimestamp required-reason API (stat/fstat) the bundled frameworks use.
   s.resource_bundles = { "OpenAILiveToolkit_privacy" => ["ios/PrivacyInfo.xcprivacy"] }
-  s.resources = "ios/Frameworks/SwitchboardAICoustics/ios/models/#{quail_model}" if aicoustics
 
   # Fetch the Switchboard xcframeworks during `pod install` — keeps the binaries
   # out of git. Idempotent: skips if already present.
@@ -54,7 +44,6 @@ Pod::Spec.new do |s|
     "HEADER_SEARCH_PATHS"          => "$(inherited) " + header_search_paths.join(" "),
     "FRAMEWORK_SEARCH_PATHS"       => "$(inherited) " + framework_search_paths.join(" "),
     "CLANG_CXX_LANGUAGE_STANDARD"  => "c++20",
-    "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) OPENAI_LIVE_TOOLKIT_AICOUSTICS=#{aicoustics ? 1 : 0}",
   }
 
   s.frameworks = "AVFoundation", "AudioToolbox", "MediaPlayer", "Network"

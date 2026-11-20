@@ -12,22 +12,15 @@
 # SWITCHBOARD_LOCAL_BUILD=<switchboard-sdk checkout>/out copies the packages
 # built there instead. Packages it doesn't have are still downloaded.
 #
-# OPENAI_LIVE_AICOUSTICS=1 also links the AICoustics extension for speaker
-# isolation. It isn't published, so it only comes from SWITCHBOARD_LOCAL_BUILD.
-#
 # Layout produced (matches the podspec's vendored_frameworks / search paths):
 #   ios/Frameworks/<Package>/ios/include/...           (C++ headers)
 #   ios/Frameworks/<Package>/ios/<Package>.xcframework (binary)
-#   ios/Frameworks/<Package>/ios/models/...            (AICoustics models)
 set -euo pipefail
 
 SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-develop/3.3.0}"
 PUBLIC_URL="https://switchboard-sdk-public.s3.amazonaws.com/builds"
 
 PACKAGES=(SwitchboardSDK SwitchboardOnnx SwitchboardSileroVAD SwitchboardOpenAI)
-if [ "${OPENAI_LIVE_AICOUSTICS:-}" = "1" ]; then
-  PACKAGES+=(SwitchboardAICoustics)
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORKS_DIR="${SCRIPT_DIR}/../ios/Frameworks"
@@ -58,20 +51,14 @@ for pkg in "${PACKAGES[@]}"; do
 
   local_src="${SWITCHBOARD_LOCAL_BUILD:-}/${pkg}/iOS"
   if [ -n "${SWITCHBOARD_LOCAL_BUILD:-}" ] && [ -d "${local_src}/${pkg}.xcframework" ]; then
-    # Always copied: a local build changes without its path changing. -L because a local
-    # AICoustics links its models from the SDK checkout, and CocoaPods drops resources
-    # that resolve outside the pod.
+    # Always copied: a local build changes without its path changing. -L because CocoaPods
+    # drops files that resolve outside the pod.
     echo "→ Copying ${pkg} from ${local_src}"
     rm -rf "${dest}"
     mkdir -p "${dest}"
     cp -RL "${local_src}/." "${dest}/"
     echo "local:${local_src}" > "${stamp}"
     continue
-  fi
-
-  if [ "${pkg}" = "SwitchboardAICoustics" ]; then
-    echo "error: SwitchboardAICoustics is in early access (hello@synervoz.com). Set SWITCHBOARD_LOCAL_BUILD to an SDK build that has it, or leave out OPENAI_LIVE_AICOUSTICS." >&2
-    exit 1
   fi
 
   # The stamp makes the skip build-aware: changing SWITCHBOARD_BUILD re-downloads
