@@ -7,10 +7,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Nightly too: the toolkit gets the latest Switchboard SDK 3.3.0 development build, which
-  # changes without a change here.
-  schedule:
-    - cron: "0 4 * * *"
   workflow_dispatch:
 
 permissions:
