@@ -29,6 +29,11 @@ This toolkit is that layer.
 
 ## The easy part
 
+```sh
+npm install @synervoz/openai-live-toolkit
+cd ios && bundle exec pod install
+```
+
 Wrap your app, call the hook, register a tool, press the button.
 
 ```tsx
