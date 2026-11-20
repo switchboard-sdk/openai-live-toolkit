@@ -37,7 +37,7 @@ Install the tarball, not `file:../openai-live-toolkit` — a symlinked package
 breaks Metro resolution and duplicates React. The tarball is a snapshot, so re-pack
 and re-install after every change, or the app keeps building against the old API.
 
-CI does the same on every PR and nightly: [`build.yml`](.github/workflows/build.yml)
+CI does the same on every PR: [`build.yml`](.github/workflows/build.yml)
 packs the toolkit and builds the example app against the tarball for Android and iOS,
 from scratch with no caches.
 
