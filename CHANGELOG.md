@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Tools through Responses delegation.
 - A grouped live transcript of both speakers.
 - Context actions: `addContext`, `say`. The model is told not to mention context unless the user asks.
-- Example app with a transcript, mute and two tools.
+- Example app with two screens: Basics, with a transcript, mute and two tools, and Radio, an example implementation of media.
 - `transport` prop: `'webrtc'` by default, where the Switchboard backend creates the session and the app holds no OpenAI key; `'websocket'` with `openAIApiKey`.
 - `SWITCHBOARD_LOCAL_BUILD` for frameworks built from a `switchboard-sdk` checkout.
 - `apiUrl` prop for another Switchboard backend.
@@ -22,7 +22,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `webSearch`: the delegate can search the web, for weather, news and other current information.
 - `mixWithOthers`: music from other apps keeps playing instead of stopping. On iOS `otherAudioDucking` lowers it only while someone talks; on Android the system lowers it while the engine runs, and other apps pause without it through audio focus. Android logs audio focus changes.
 - `microphone` and the hook's `bluetooth` (iOS): with a Bluetooth device connected, hear the phone's microphone with high-quality Bluetooth audio (the default), or the device's microphone in call quality. The example app shows a Microphone: Bluetooth / Phone choice while one is connected.
-- `media` prop and `useMedia()`: plays an MP3 or AAC stream or file from an http(s) URL, such as internet radio, mixed with the model's voice and ducked while it talks, and while the user talks over the loudspeaker; echo cancellation keeps it from the model. Off by default, with no media nodes in the graph. The example app has a Radio choice while it runs.
+- `media` prop and `useMedia()`: plays an MP3 or AAC stream or file from an http(s) URL, such as internet radio, mixed with the model's voice and ducked while it talks, and while the user talks over the loudspeaker; echo cancellation keeps it from the model. Off by default, with no media nodes in the graph. The example app's Radio screen uses it.
 - `useMediaTools()`: the model can play a station (or any public URL, with `allowUrls`), pause, resume, change the volume and say what's playing, and is told when the station or song changes. The example app gives it three stations.
 - Seeking in media files: `media.seek()`, `media.duration`, `useMediaPosition()` and the `seek_media` tool.
 - `sessionContinued` on the hook, and `continued` on the `sessionStarted` event: whether the session continues the conversation, so the app can skip context it already gave.

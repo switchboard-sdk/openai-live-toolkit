@@ -92,9 +92,9 @@ The audio engine, the `OpenAI.Live` node and the toolkit's provider run on the p
 
 - [Getting started](docs/getting-started.md) covers install, frameworks, iOS and Android setup, and credentials.
 - [Tools](docs/tools.md) covers `useTool`, delegation, dynamic tool sets, and tool errors.
-- [Media](docs/media.md) covers playing radio and podcasts alongside the conversation, the model's media tools, and Now Playing.
+- [Media](docs/media.md) is optional: radio and podcasts alongside the conversation, which the model can control, and Now Playing. The example app's Radio screen is one implementation.
 - [API reference](docs/api-reference.md) covers the provider, the `useOpenAILiveToolkit()` hook, every export, and the error codes.
-- [Example app](example/README.md) is a complete screen with a transcript, mute, and two tools.
+- [Example app](example/README.md) has two screens: Basics, with a transcript, mute, and two tools, and Radio, an example implementation of media.
 - The [`OpenAI.Live` node](https://docs.switchboard.audio/extensions/openai/openai-live-node/) in the Switchboard docs is what the toolkit runs on. Use it directly in native iOS, Android, macOS and Linux apps.
 
 ## Questions

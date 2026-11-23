@@ -1,6 +1,11 @@
 # Example app
 
-A GPT-Live voice assistant screen: start/stop, mute, a live transcript of both sides, two tools (`set_background_color`, `get_time`), and idle mode after 15 s of silence.
+A GPT-Live voice assistant with two screens that share one conversation: a live transcript of both sides, start/stop, and idle mode after 15 s of silence.
+
+- **Basics** ([`BasicsScreen.tsx`](BasicsScreen.tsx)) is the core, as in the README's quickstart: two tools (`get_time`, `set_background_color`), mute, and the Bluetooth microphone choice.
+- **Radio** ([`RadioScreen.tsx`](RadioScreen.tsx)) is an example implementation of [media](../docs/media.md): three stations the user and the model can play with `useMediaTools`, what's playing, Now Playing on the iOS lock screen, and the offline notice. Leaving the screen stops the radio, since the model's media tools go with it.
+
+The provider in [`App.tsx`](App.tsx) has every setting both screens use, and the transcript and Start button are in [`Conversation.tsx`](Conversation.tsx).
 
 ## Setup
 
@@ -32,6 +37,16 @@ The first build downloads the Switchboard SDK from the Synervoz Maven repository
 
 ## Things to try
 
+On Basics:
+
 - Talk over the assistant mid-sentence. GPT-Live handles the interruption itself.
 - "What time is it?" and "Make the background dark blue" exercise the tools through delegation.
 - Stay quiet for 15 s and the connection shows `idle`. Ask something about the earlier conversation: the session reopens and the model remembers it.
+
+On Radio, after Start talking:
+
+- "Play some rock", "What's this song?", "Turn it down" and "Play something else". The model's voice ducks the radio while it talks.
+- Lock the phone (iOS): the lock screen shows the station and song, and its buttons pause it or change the station.
+- Turn on airplane mode while the radio plays: the phone says the connection is lost, with the radio lowered, and says so again when it's back. The radio plays again.
+
+Android plays MP3 only for now, so Radio has no News station there.
