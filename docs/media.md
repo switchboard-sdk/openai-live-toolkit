@@ -1,6 +1,6 @@
 # Media
 
-Media plays an MP3 or AAC stream or file from an http(s) URL, such as internet radio or a podcast, alongside the conversation. The model can control it and is told what's playing. The [example app](../example/README.md)'s Radio choice uses it, with three stations the model can also play.
+Media plays an MP3 or AAC stream or file from an http(s) URL, such as internet radio or a podcast, alongside the conversation. The model can control it and is told what's playing. The [example app](../example/README.md)'s Radio screen is an example implementation: stations the user and the model can play, what's playing, and Now Playing on iOS.
 
 Media is optional and off by default. Turn it on with the provider's `media` prop:
 
