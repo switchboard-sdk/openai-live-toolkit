@@ -511,7 +511,7 @@ describe('media tools', () => {
     await toolkit.start()
     expect(liveNodeConfig().tools.map((t: { name: string }) => t.name)).toContain('play_media')
     expect(liveNodeConfig().instructions).toContain(
-      'Playing, pausing, resuming, skipping and the volume of music and radio are delegated too.'
+      '- The user asks to play, pause, resume or skip music or radio, or to change its volume.'
     )
   })
 

@@ -262,7 +262,7 @@ describe('graph', () => {
     await running()
     expect(liveNodeConfig()).toEqual({
       transport: 'webrtc',
-      model: 'gpt-live-1',
+      model: 'gpt-live-1.1',
       voice: 'marin',
       instructions: CONTEXT_INSTRUCTIONS,
       delegation: 'responses',
@@ -429,33 +429,57 @@ describe('tools', () => {
 })
 
 describe('tools note', () => {
-  it('tells the model to delegate, then lists each tool, and is empty without tools', () => {
+  it('is a delegation policy listing each tool, and empty without tools', () => {
     expect(toolsNote([])).toBe('')
     expect(
       toolsNote([
-        { name: 'a', description: 'Does A' },
-        { name: 'b', description: 'Does B' },
+        { name: 'a', description: 'Does A.' },
+        { name: 'b', description: 'Does B.' },
       ])
     ).toBe(
-      "You can't change anything in the app yourself: only delegating does. When the user asks " +
-        'for something your tools do, delegate it right away, every time, also when asked again ' +
-        'or right after doing it. Until the result comes, say a word at most, like "Sure". Never ' +
-        "say it's done, or that you'll do it, without delegating: saying so changes nothing. " +
-        'Your tools: a (Does A); b (Does B).'
+      [
+        'Delegation policy:',
+        'Backend tools:',
+        '- a: Does A.',
+        '- b: Does B.',
+        '',
+        'Delegate to the backend when:',
+        '- The user asks for something a backend tool does, also when asked again or right after it was done.',
+        '- A correction changes the work already requested.',
+        '',
+        'Do not delegate when:',
+        '- You can answer from the conversation or a still-current result.',
+        '- You need a brief clarification to understand the request.',
+        '',
+        "You can't change anything in the app yourself: only the backend can. Replies like " +
+          '"Sure", "Pausing it", "Resuming it" or "I\'ll talk louder" change nothing unless you ' +
+          'delegate.',
+        'Delegate to the backend before giving an answer that depends on backend work.',
+        'Do not guess the result while waiting.',
+      ].join('\n')
     )
   })
 
-  it("puts the features' lines before the list", () => {
+  it("adds the features' conditions to when to delegate", () => {
     expect(
-      toolsNote([{ name: 'a', description: 'A' }], false, ['Music is delegated too.'])
-    ).toContain('saying so changes nothing. Music is delegated too. Your tools: a (A).')
+      toolsNote([{ name: 'a', description: 'A' }], false, ['The user asks for music.'])
+    ).toContain('after it was done.\n- The user asks for music.\n- A correction')
   })
 
   it("tells the model its voice's loudness is the app's to set", () => {
     expect(toolsNote([{ name: 'seek_media', description: 'Skips' }])).not.toContain('your voice')
     expect(toolsNote([{ name: 'set_voice_volume', description: 'Voice' }])).toContain(
-      'are about the volume setting of your voice, which only set_voice_volume changes'
+      "- The user asks you to speak up, talk louder or quieter, or can't hear you. That's the " +
+        'volume setting of your voice: only set_voice_volume changes it'
     )
+  })
+
+  it('lists web search as a backend tool, also without app tools', () => {
+    const note = toolsNote([], true)
+    expect(note).toContain(
+      'Backend tools:\n- Web search: current information like weather or news.\n\n'
+    )
+    expect(note).not.toContain("You can't change anything in the app")
   })
 
   it('setInstructions writes the prompt with the current tools note', async () => {
@@ -495,9 +519,11 @@ describe('tools note', () => {
     expect(pieces.length).toBeGreaterThan(1)
     pieces.forEach((text) => expect(text.length).toBeLessThanOrEqual(1200))
     pieces.slice(1).forEach((text) => expect(text.startsWith('Your tools, continued: ')).toBe(true))
-    expect(pieces.map((text) => text.replace('Your tools, continued: ', '')).join(' ')).toBe(
-      `Your tools changed. ${toolsNote(tools)}`
-    )
+    // Pieces end at line ends, so only a blank line at a cut goes.
+    const lines = (text: string) => text.replace(/\n+/g, '\n')
+    expect(
+      lines(pieces.map((text) => text.replace('Your tools, continued: ', '')).join('\n'))
+    ).toBe(lines(`Your tools changed. ${toolsNote(tools)}`))
   })
 
   it('does not append before a session is up', async () => {
@@ -1741,6 +1767,15 @@ describe('splitContext', () => {
     expect(pieces.join(' ')).toBe(text)
   })
 
+  it('cuts long text at a line end', () => {
+    const lines = Array.from({ length: 60 }, (_, i) => `- entry ${i}: with some words`)
+    const text = lines.join('\n')
+    const pieces = splitContext(text)
+    expect(pieces.length).toBeGreaterThan(1)
+    pieces.forEach((p) => expect(p.startsWith('- entry')).toBe(true))
+    expect(pieces.join('\n')).toBe(text)
+  })
+
   it('cuts text without breaks at the limit', () => {
     expect(splitContext('x'.repeat(2500)).map((p) => p.length)).toEqual([1200, 1200, 100])
   })
@@ -1828,7 +1863,7 @@ describe('web search', () => {
   it('gives the delegate web search and tells the model about it', async () => {
     await running({ ...CREDS, webSearch: true })
     expect(liveNodeConfig().tools).toContainEqual({ type: 'web_search' })
-    expect(liveNodeConfig().instructions).toContain('the delegate can search the web')
+    expect(liveNodeConfig().instructions).toContain('- Web search: current information')
   })
 
   it('keeps web search when tools change', async () => {

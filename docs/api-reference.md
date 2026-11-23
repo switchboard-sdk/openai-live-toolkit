@@ -14,7 +14,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `apiUrl` | production | Switchboard backend URL. The SDK only accepts `https://<host>.switchboard.audio`. |
 | `instructions` | `''` | System prompt. |
 | `voice` | `'marin'` | See `VOICES`. |
-| `model` | `'gpt-live-1'` | Fixed once the engine is built. |
+| `model` | `'gpt-live-1.1'` | Fixed once the engine is built. |
 | `delegateModel` | `'gpt-5.5'` | Responses model that runs delegated work and tools. |
 | `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
 | `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
