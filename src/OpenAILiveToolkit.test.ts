@@ -371,34 +371,23 @@ describe('voice volume', () => {
 })
 
 describe('muting', () => {
-  it('mutes a live session, and re-applies it to each new session', async () => {
-    const toolkit = await running()
+  it('mutes the node while the engine runs, and re-applies it to each new session', async () => {
+    const toolkit = initialized()
     toolkit.setMuted(true)
-    // No session yet: nothing to send.
+    // No engine yet: nothing to send.
     expect(commandsFor('muteInput')).toHaveLength(0)
+    await toolkit.start()
 
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-    expect(commandsFor('muteInput')).toHaveLength(1)
-
-    toolkit.setMuted(false)
-    expect(commandsFor('unmuteInput')).toHaveLength(1)
-
-    emitEvent('engine-1.liveNode', 'sessionDisconnected')
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
-    expect(commandsFor('muteInput')).toHaveLength(1)
-    expect(commandsFor('unmuteInput')).toHaveLength(2)
-  })
-
-  it('unmutes the next session after an unmute with no session live', async () => {
-    const toolkit = await running()
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    // With no session up too: the node keeps it for the next one.
     toolkit.setMuted(true)
-    emitEvent('engine-1.liveNode', 'sessionDisconnected')
-    toolkit.setMuted(false)
-    expect(commandsFor('unmuteInput')).toHaveLength(1)
+    expect(commandsFor('muteInput')).toHaveLength(1)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    expect(commandsFor('muteInput')).toHaveLength(2)
 
-    // The node may still hold the mute from s1.
+    toolkit.setMuted(false)
+    emitEvent('engine-1.liveNode', 'sessionDisconnected')
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    expect(commandsFor('muteInput')).toHaveLength(2)
     expect(commandsFor('unmuteInput')).toHaveLength(2)
   })
 })
@@ -922,59 +911,47 @@ describe('idle mode', () => {
     expect(liveNodeConfig().store).toBe(true)
   })
 
-  it('ends the session once nobody has talked for the timeout', async () => {
+  /** The node's idle mode closes the session. */
+  function goIdle() {
+    emitEvent('engine-1.liveNode', 'sessionIdle', { sessionId: 's1' })
+  }
+
+  /** Speech reopens it. */
+  function wake() {
+    emitEvent('engine-1.liveNode', 'sessionWoken')
+  }
+
+  it('leaves closing and reopening sessions to the Live node, driven by the VAD', async () => {
+    await running({ ...IDLE, wakeGraceMs: 3_000 })
+    expect(liveNodeConfig()).toMatchObject({ idleTimeoutMs: 10_000, wakeGraceMs: 3_000 })
+    expect(engineConfig().configuration.graph.dataConnections).toEqual([
+      { source: 'vadNode/events/speechStarted', destination: 'liveNode/actions/speechStarted' },
+      { source: 'vadNode/events/speechEnded', destination: 'liveNode/actions/speechEnded' },
+    ])
+  })
+
+  it('gives the Live node no idle mode when off', async () => {
+    await running()
+    expect(liveNodeConfig().idleTimeoutMs).toBeUndefined()
+    expect(engineConfig().configuration.graph.dataConnections).toEqual([])
+  })
+
+  it('is idle from sessionIdle until sessionWoken, and never closes or opens sessions itself', async () => {
     const toolkit = await live()
     const names: string[] = []
     toolkit.addEventListener('live', (e) => names.push(e.name))
-    jest.advanceTimersByTime(9_999)
-    expect(commandFor('endSession')).toBeUndefined()
-    jest.advanceTimersByTime(1)
-    expect(commandFor('endSession')).toBeDefined()
+    jest.advanceTimersByTime(600_000)
+    goIdle()
     expect(toolkit.isIdle).toBe(true)
-    expect(names).toEqual(['sessionEnded'])
-  })
-
-  it('counts from the last sign of conversation', async () => {
-    await live()
-    jest.advanceTimersByTime(9_000)
-    emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
-    jest.advanceTimersByTime(9_000)
-    expect(commandFor('endSession')).toBeUndefined()
-    jest.advanceTimersByTime(1_000)
-    expect(commandFor('endSession')).toBeDefined()
-  })
-
-  it('stays up while the user is speaking or a tool is running', async () => {
-    const toolkit = await live()
     vad('speechStarted')
-    jest.advanceTimersByTime(30_000)
-    expect(commandFor('endSession')).toBeUndefined()
-    vad('speechEnded')
-
-    let finish: (value: unknown) => void = () => {}
-    toolkit.registerTool({
-      name: 't',
-      description: 'T',
-      handler: () => new Promise((r) => (finish = r)),
-    })
-    emitEvent('engine-1.liveNode', 'toolCall', { callId: 'c1', name: 't', argumentsJson: '{}' })
-    jest.advanceTimersByTime(30_000)
-    expect(commandFor('endSession')).toBeUndefined()
-    finish(1)
-    await flush()
-    jest.advanceTimersByTime(10_000)
-    expect(commandFor('endSession')).toBeDefined()
-  })
-
-  it('wakes on speech by forking the last session', async () => {
-    const toolkit = await live()
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
-    expect(commandFor('startSession').params.params).toEqual({ forkSessionId: 's1' })
+    wake()
     expect(toolkit.isIdle).toBe(false)
+    expect(commandFor('endSession')).toBeUndefined()
+    expect(commandFor('startSession')).toBeUndefined()
+    expect(names).toEqual(['sessionIdle', 'sessionWoken'])
   })
 
-  it('tells listeners whether a session continues the conversation', async () => {
+  it('tells listeners whether a session continues the conversation, as the node says', async () => {
     const toolkit = await running(IDLE)
     const continued: unknown[] = []
     toolkit.addEventListener('live', (e) => {
@@ -982,91 +959,39 @@ describe('idle mode', () => {
         continued.push((e.data as { continued?: boolean }).continued)
       }
     })
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
-    toolkit.newConversation()
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's3' })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1', continued: false })
+    goIdle()
+    wake()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2', continued: true })
+    // A refused fork starts a new session.
+    goIdle()
+    wake()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's3', continued: false })
     expect(continued).toEqual([false, true, false])
   })
 
-  it('newConversation while idle makes the next wake start fresh', async () => {
+  it('newConversation while idle has the node start a new session now', async () => {
     const toolkit = await live()
-    jest.advanceTimersByTime(10_000)
+    goIdle()
     toolkit.newConversation()
-    expect(commandsFor('resetSession')).toHaveLength(0)
-    vad('speechStarted')
-    expect(commandFor('startSession').params.params).toEqual({})
+    expect(commandsFor('resetSession')).toHaveLength(1)
+    expect(toolkit.isIdle).toBe(false)
   })
 
-  describe('after a wake', () => {
-    async function woken(options: Parameters<OpenAILiveToolkit['initialize']>[0] = IDLE) {
-      const toolkit = await live(options)
-      jest.advanceTimersByTime(10_000)
-      vad('speechStarted')
-      vad('speechEnded')
-      emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
-      return toolkit
-    }
-
-    it('closes again after the grace period when the model does not answer', async () => {
-      const toolkit = await woken()
-      jest.advanceTimersByTime(4_999)
-      expect(commandsFor('endSession')).toHaveLength(1)
-      jest.advanceTimersByTime(1)
-      expect(commandsFor('endSession')).toHaveLength(2)
-      expect(toolkit.isIdle).toBe(true)
-    })
-
-    it('keeps the grace period through an input transcript, like an "mm" from a noise', async () => {
-      await woken()
-      emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: ' Mm' })
-      jest.advanceTimersByTime(5_000)
-      expect(commandsFor('endSession')).toHaveLength(2)
-    })
-
-    it('goes back to the full timeout once the model answers', async () => {
-      await woken()
-      emitEvent('engine-1.liveNode', 'outputTranscriptDelta', { delta: 'Sure.' })
-      jest.advanceTimersByTime(9_999)
-      expect(commandsFor('endSession')).toHaveLength(1)
-      jest.advanceTimersByTime(1)
-      expect(commandsFor('endSession')).toHaveLength(2)
-    })
-
-    it('waits the full timeout when the grace period is off', async () => {
-      await woken({ ...IDLE, wakeGraceMs: 0 })
-      jest.advanceTimersByTime(9_999)
-      expect(commandsFor('endSession')).toHaveLength(1)
-      jest.advanceTimersByTime(1)
-      expect(commandsFor('endSession')).toHaveLength(2)
-    })
-  })
-
-  it('starts fresh after the instructions or voice change, which a fork would keep', async () => {
+  it('tells the node about a mute while idle, so speech does not wake it', async () => {
     const toolkit = await live()
-    jest.advanceTimersByTime(10_000)
-    toolkit.setInstructions('Be kind.')
-    vad('speechStarted')
-    expect(commandFor('startSession').params.params).toEqual({})
-  })
-
-  it('does not wake while muted', async () => {
-    const toolkit = await live()
+    goIdle()
     toolkit.setMuted(true)
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
-    expect(commandFor('startSession')).toBeUndefined()
+    expect(commandsFor('muteInput')).toHaveLength(1)
   })
 
   it('tells a fork about tools that changed while idle', async () => {
     const toolkit = await live()
-    jest.advanceTimersByTime(10_000)
+    goIdle()
     toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
     expect(commandsFor('appendThinking')).toHaveLength(0)
-    vad('speechStarted')
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    wake()
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2', continued: true })
     expect(commandsFor('appendThinking').map((c) => c.params.params.text)).toEqual([
       'Your tools changed. ' + toolsNote([{ name: 'a', description: 'A' }]),
     ])
@@ -1076,14 +1001,14 @@ describe('idle mode', () => {
     const toolkit = await live()
     const errors: OpenAILiveError[] = []
     toolkit.addErrorListener((e) => errors.push(e))
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
+    goIdle()
+    wake()
     emitEvent('engine-1.liveNode', 'error', {
       type: 'invalid_request_error',
       message: 'The stored session was not found.',
     })
     emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'refused', reconnecting: true })
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2', continued: false })
     expect(errors.map((e) => e.fatal)).toEqual([false])
     expect(native.log).toHaveBeenCalledWith('session started s2')
   })
@@ -1092,14 +1017,14 @@ describe('idle mode', () => {
     const toolkit = await live()
     const errors: OpenAILiveError[] = []
     toolkit.addErrorListener((e) => errors.push(e))
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
+    goIdle()
+    wake()
     emitEvent('engine-1.liveNode', 'error', {
       type: 'transport_error',
       message: 'Failed to create the live session: HTTP 502, Failed to fork live session',
     })
     emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'dropped', reconnecting: true })
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2', continued: false })
     expect(errors.map((e) => e.fatal)).toEqual([false])
     expect(native.log).toHaveBeenCalledWith('session started s2')
   })
@@ -1108,8 +1033,8 @@ describe('idle mode', () => {
     const toolkit = await live()
     const errors: OpenAILiveError[] = []
     toolkit.addErrorListener((e) => errors.push(e))
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
+    goIdle()
+    wake()
     emitEvent('engine-1.liveNode', 'error', {
       type: 'transport_error',
       message: "Failed to create the live session: Couldn't resolve host",
@@ -1118,7 +1043,7 @@ describe('idle mode', () => {
       reason: 'unreachable',
       reconnecting: true,
     })
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2' })
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's2', continued: true })
     expect(errors).toEqual([])
     expect(native.log).toHaveBeenCalledWith('session started s2 (fork)')
   })
@@ -1127,8 +1052,8 @@ describe('idle mode', () => {
     const toolkit = await live()
     const errors: OpenAILiveError[] = []
     toolkit.addErrorListener((e) => errors.push(e))
-    jest.advanceTimersByTime(10_000)
-    vad('speechStarted')
+    goIdle()
+    wake()
     emitEvent('engine-1.liveNode', 'error', {
       type: 'transport_error',
       message: 'Failed to create the live session: HTTP 401, Invalid app credentials.',
@@ -1138,19 +1063,6 @@ describe('idle mode', () => {
       reconnecting: false,
     })
     expect(errors.map((e) => e.fatal)).toEqual([true])
-  })
-
-  it('stops counting once the engine stops', async () => {
-    const toolkit = await live()
-    toolkit.stop()
-    jest.advanceTimersByTime(10_000)
-    expect(commandFor('endSession')).toBeUndefined()
-  })
-
-  it('never ends the session when off', async () => {
-    await live(CREDS)
-    jest.advanceTimersByTime(600_000)
-    expect(commandFor('endSession')).toBeUndefined()
   })
 })
 
@@ -1168,8 +1080,8 @@ describe('session notes', () => {
     return commandsFor('appendThinking').map((c) => c.params.params.text)
   }
 
-  function started(sessionId: string) {
-    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId })
+  function started(sessionId: string, continued = false) {
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId, continued })
   }
 
   it('tells a live session a note, and each change once', async () => {
@@ -1187,11 +1099,10 @@ describe('session notes', () => {
     toolkit.setSessionNote('music', 'Apple Music is playing "Song".')
     started('s1')
     expect(told()).toEqual(['Where the car is: Budapest.', 'Apple Music is playing "Song".'])
-    jest.advanceTimersByTime(10_000)
+    emitEvent('engine-1.liveNode', 'sessionIdle', { sessionId: 's1' })
     toolkit.setSessionNote('where', 'Where the car is: Vienna.')
-    emitEvent('engine-1.vadNode', 'speechStarted')
-    expect(commandFor('startSession').params.params).toEqual({ forkSessionId: 's1' })
-    started('s2')
+    emitEvent('engine-1.liveNode', 'sessionWoken')
+    started('s2', true)
     expect(told().slice(2)).toEqual(['Where the car is: Vienna.'])
     toolkit.newConversation()
     started('s3')
@@ -1485,7 +1396,7 @@ describe('ducking other apps', () => {
     emitEvent(
       'engine-1.liveNode',
       name,
-      name === 'sessionStarted' ? { sessionId: 's1' } : undefined
+      name === 'sessionStarted' || name === 'sessionIdle' ? { sessionId: 's1' } : undefined
     )
   }
 
@@ -1507,10 +1418,9 @@ describe('ducking other apps', () => {
   })
 
   it('brings them back when the session ends for quiet', async () => {
-    jest.useFakeTimers({ doNotFake: ['setImmediate', 'nextTick'] })
     await running({ ...OPTIONS, idleTimeoutMs: 10_000 })
     live('sessionStarted')
-    jest.advanceTimersByTime(10_000)
+    live('sessionIdle')
     expect(ducks()).toEqual([true, false])
   })
 
@@ -1655,8 +1565,7 @@ describe('offline notice', () => {
   it('says it is back when the network returns while the session is closed for quiet', async () => {
     await running({ ...CREDS, offlineNotice: true, idleTimeoutMs: 10_000 })
     live('sessionStarted', { sessionId: 's1' })
-    await jest.advanceTimersByTimeAsync(10_000)
-    expect(commandFor('endSession')).toBeDefined()
+    live('sessionIdle', { sessionId: 's1' })
     emitNetwork(false)
     await jest.advanceTimersByTimeAsync(3_000)
     emitNetwork(true)
@@ -2180,34 +2089,6 @@ describe('Android', () => {
       await flush()
     }
 
-    describe('idle mode', () => {
-      async function live() {
-        const toolkit = await running({ ...CREDS, idleTimeoutMs: 10_000 })
-        emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
-        return toolkit
-      }
-
-      it('counts down natively, since JS timers stop in the background', async () => {
-        await live()
-        await fire(10_000)
-        expect(commandFor('endSession')).toBeDefined()
-      })
-
-      it('ignores a timer that was cancelled', async () => {
-        await live()
-        emitEvent('engine-1.liveNode', 'inputTranscriptDelta', { delta: 'hi' })
-        expect(audioSession.cancelTimer).toHaveBeenCalled()
-        await flush()
-        expect(commandFor('endSession')).toBeUndefined()
-      })
-
-      it('cancels the native timer on stop', async () => {
-        const toolkit = await live()
-        toolkit.stop()
-        expect(timers.size).toBe(0)
-      })
-    })
-
     describe('offline notice', () => {
       beforeEach(() => {
         audioSession.isNetworkAvailable = jest.fn(() => true)
@@ -2229,12 +2110,21 @@ describe('Android', () => {
         expect(notice.params.params).toEqual({ audioFilePath: '/mock/caches/tts.wav' })
       })
 
-      it('says nothing for a short drop', async () => {
+      it('says nothing for a short drop, whose timer is cancelled', async () => {
         await running({ ...CREDS, offlineNotice: true })
         DeviceEventEmitter.emit(NETWORK_CHANGED_EVENT, false)
         DeviceEventEmitter.emit(NETWORK_CHANGED_EVENT, true)
+        expect(audioSession.cancelTimer).toHaveBeenCalled()
         expect(timers.size).toBe(0)
+        await flush()
         expect(audioSession.synthesizeSpeech).not.toHaveBeenCalled()
+      })
+
+      it('cancels the native timer on stop', async () => {
+        const toolkit = await running({ ...CREDS, offlineNotice: true })
+        DeviceEventEmitter.emit(NETWORK_CHANGED_EVENT, false)
+        toolkit.stop()
+        expect(timers.size).toBe(0)
       })
     })
   })

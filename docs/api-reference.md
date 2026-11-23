@@ -44,7 +44,7 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `start(options?)`, `stop()`, `release()` | Start opens a session; with `continueConversation` it continues the conversation a stop closed, or `options.continueSessionId`. Stop closes it and keeps the engine; release frees it. |
 | `sessionId` | The latest session's id, for the app to save and pass to `start` as `continueSessionId`. Null before the first session and after `newConversation()`. |
 | `sessionContinued` | Whether the session that's up continues the conversation of the one before it, as when idle mode wakes it, so it still holds the context that one was given. The `sessionStarted` live event carries it as `continued`. |
-| `newConversation()` | Forgets the conversation and clears the transcript. A session that's up is replaced by a new one. |
+| `newConversation()` | Forgets the conversation and clears the transcript. A new session starts right away, also while idle. |
 | `hasMicrophonePermission`, `requestMicrophonePermission()` | `start()` requests it automatically. |
 | `transcript`, `clearTranscript()` | `TranscriptEntry[]`: `{ id, speaker: 'user' \| 'assistant', text, startMs, endMs }`, in the order things were said. A new line starts whenever the speaker changes. |
 | `instructions`, `setInstructions(text)` | Fixed per session: while running this starts a new session and drops the conversation. `addContext` tells a live session something without dropping it. |

@@ -129,7 +129,7 @@ The engine runs at 48 kHz with platform echo cancellation: voice processing on i
 
 ## Idle mode
 
-Set `idleTimeoutMs` on the provider to stop paying for silence. Once nobody has talked for that long (no speech from the user, nothing from the model, no tool running), the session closes and `connectionStatus` becomes `'idle'`. The engine keeps running, and a Silero VAD on the input the model hears reopens the session when the user speaks:
+Set `idleTimeoutMs` on the provider to stop paying for silence. Once nobody has talked for that long (no speech from the user, nothing from the model, no delegation or tool call in progress), the `OpenAI.Live` node closes the session and `connectionStatus` becomes `'idle'`. The engine keeps running, and a Silero VAD on the input the model hears has the node reopen the session when the user speaks:
 
 ```
 mic → mono → splitter → OpenAI.Live → speaker
@@ -141,6 +141,8 @@ mic → mono → splitter → OpenAI.Live → speaker
 - **Forks slow down as the conversation grows**, from 1–2 s to 5 s or more over a long drive, nearly all of it on OpenAI's side. A fork still holds the context the closed session was given, so don't give it again: use `setSessionNote` for context that changes, or check `sessionContinued`.
 - **Any voice wakes it**, and some noises: the VAD can't tell the user from a TV or someone nearby, and takes a phone vibrating on a table for speech. A wake the model doesn't answer closes again after `wakeGraceMs` (5 s by default) instead of a full idle timeout.
 - **Instructions and voice.** A fork keeps the closed session's instructions and voice, so changing either while idle makes the next session start fresh.
+- **Slow tools.** A tool call is waited for up to a minute. A handler that takes longer gets the session closed anyway, and its result is lost.
+- **Context.** `addContext` while idle reaches the next session when it opens.
 - **Muted.** Speech doesn't reopen the session while the model is muted.
 
 ## Continuing a conversation
@@ -150,7 +152,7 @@ Set `continueConversation` on the provider to keep the conversation when a sessi
 - **Stop and start.** `start()` after `stop()` forks the session the stop closed, so the model remembers what was said.
 - **After the app was killed.** The toolkit keeps nothing across launches. Save `sessionId` from `useOpenAILiveToolkit()` and pass it to the first start: `start({ continueSessionId })`. When to resume is up to the app: clear the saved id when the user logs out, so the next user doesn't pick up their conversation, and drop it once it's old. The model remembers, but `transcript` starts empty. A session that was up when the app was killed can only be continued once OpenAI has closed it on its side, which can take up to a couple of minutes; a start before that begins a new conversation.
 - **Instructions and voice.** A fork keeps those of the session it continues, so after `setInstructions` or `setVoice` the next session starts fresh. Save them with a session id, and skip the resume when they've changed.
-- **Starting over.** `newConversation()` forgets the conversation and clears the transcript; a session that's up is replaced right away. After `release()` the next session starts fresh too.
+- **Starting over.** `newConversation()` forgets the conversation and clears the transcript; a new session starts right away, also while idle. After `release()` the next session starts fresh too.
 - **If it can't be continued**, for example OpenAI no longer has the stored session, a new session starts instead.
 
 ## Other apps' audio
