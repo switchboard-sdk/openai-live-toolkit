@@ -212,7 +212,7 @@ export interface OpenAILiveToolkitProviderProps {
   instructions?: string
   /** Voice (defaults to `'marin'`). Initial value; also settable via the hook. */
   voice?: OpenAIVoice
-  /** GPT-Live model id (defaults to `'gpt-live-1'`). Fixed once the engine is built. */
+  /** GPT-Live model id (defaults to `'gpt-live-1.1'`). Fixed once the engine is built. */
   model?: string
   /** Model that handles delegated work and calls tools (defaults to `'gpt-5.5'`). */
   delegateModel?: string

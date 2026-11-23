@@ -65,7 +65,7 @@ describe('initialization', () => {
         apiUrl: 'https://example.switchboard.audio',
         instructions: 'Be terse.',
         voice: 'cedar',
-        model: 'gpt-live-1',
+        model: 'gpt-live-1.1',
         delegateModel: 'gpt-6',
         media: { loudness: -14 },
       })
@@ -80,7 +80,7 @@ describe('initialization', () => {
       connectionStatus: 'none',
       transcript: [],
       voice: 'marin',
-      model: 'gpt-live-1',
+      model: 'gpt-live-1.1',
       muted: false,
       bluetooth: { connected: false, microphone: 'phone' },
     })

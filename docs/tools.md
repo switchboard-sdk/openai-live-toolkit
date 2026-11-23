@@ -4,7 +4,7 @@
 
 GPT-Live doesn't call functions itself. When a request needs work, it delegates to a Responses model (`delegateModel`, `gpt-5.5` by default), which calls your tools. The toolkit runs the handler and returns the result, the delegate finishes, and GPT-Live speaks the outcome. The conversation keeps going while that happens, so a slow handler doesn't freeze the voice.
 
-GPT-Live only delegates work it knows can be done, so the toolkit adds a note naming the registered tools to its instructions, and tells a running session when the set changes. Before the list, the note tells it that only delegating changes anything: delegate every time, repeats included, and say a word at most until the result comes. Without it, GPT-Live often says it did something, or will, without delegating. The delegate is told to call the matching tool rather than claim it acted; the provider's `delegateInstructions` are added after that. The delegate only runs, and bills, when the model hands it work.
+GPT-Live only delegates work it knows can be done, so the toolkit adds a delegation policy to its instructions, in the layout of OpenAI's [GPT-Live prompting guide](https://developers.openai.com/api/docs/guides/live-prompting), and tells a running session when the tools change. It lists the registered tools as backend tools, says when to delegate (repeats included) and when not to, and that only delegating changes anything in the app. Without it, GPT-Live often answers "Sure" or says it did something without delegating. The delegate is told to call the matching tool rather than claim it acted; the provider's `delegateInstructions` are added after that. The delegate only runs, and bills, when the model hands it work.
 
 ## `useTool`
 

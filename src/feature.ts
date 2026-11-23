@@ -9,7 +9,10 @@ import type { OpenAILiveToolkitTool } from './OpenAILiveToolkit'
 export interface ToolkitFeature {
   /** What it adds to a new engine's graph, or null for nothing. `voice` taps the model's voice. */
   graph(voice: string): FeatureGraph | null
-  /** Its line for the live model's tools note, given the registered tools, or null for none. */
+  /**
+   * Its condition for the tools note's "Delegate to the backend when" list, given the registered
+   * tools, or null for none.
+   */
   toolsNote(tools: readonly { name: string }[]): string | null
   /** Whether events from the graph node `nodeId` are its own. */
   ownsNode(nodeId: string): boolean

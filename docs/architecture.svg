@@ -89,7 +89,7 @@
   <rect x="1065" y="230" width="360" height="480" rx="14" class="oai-group"/>
   <text x="1081" y="252" class="group oai-text">OpenAI</text>
   <rect x="1110" y="307" width="250" height="85" rx="8" class="oai-node"/>
-  <text x="1235" y="344" class="name oai-text code">gpt-live-1</text>
+  <text x="1235" y="344" class="name oai-text code">gpt-live-1.1</text>
   <text x="1235" y="365" class="sub oai-text">voice model</text>
   <rect x="1100" y="575" width="130" height="85" rx="8" class="oai-node"/>
   <text x="1165" y="603" class="name oai-text">Delegate</text>

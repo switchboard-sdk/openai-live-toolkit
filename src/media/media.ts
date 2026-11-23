@@ -600,7 +600,7 @@ export function createMedia(host: FeatureHost) {
     graph,
     toolsNote: (tools) =>
       tools.some((t) => (MEDIA_TOOL_NAMES as readonly string[]).includes(t.name))
-        ? 'Playing, pausing, resuming, skipping and the volume of music and radio are delegated too.'
+        ? 'The user asks to play, pause, resume or skip music or radio, or to change its volume.'
         : null,
     ownsNode: (nodeId) => options !== null && nodeId === PLAYER_NODE,
     handleNodeEvent,

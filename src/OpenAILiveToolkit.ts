@@ -62,7 +62,7 @@ export interface OpenAILiveToolkitInitializeOptions {
   instructions?: string
   /** Voice the model speaks with. Defaults to `'marin'`. */
   voice?: OpenAIVoice
-  /** GPT-Live model id. Defaults to `'gpt-live-1'`. Fixed for the engine's lifetime. */
+  /** GPT-Live model id. Defaults to `'gpt-live-1.1'`. Fixed for the engine's lifetime. */
   model?: string
   /** Model that handles delegated work and calls tools. Defaults to `'gpt-5.5'`. */
   delegateModel?: string
@@ -322,43 +322,57 @@ export const CONTEXT_INSTRUCTIONS =
   "background: don't read them out, mention them or speak because of them unless the user asks."
 
 /**
- * What the live model is told about the registered tools, with the features' lines about theirs.
- * Empty with no tools.
+ * The live model's delegation policy for the registered tools, in the layout OpenAI's GPT-Live
+ * prompting guide gives, with the features' conditions for delegating. Empty with no tools.
  */
 export function toolsNote(
   tools: readonly { name: string; description: string }[],
   webSearch = false,
   featureNotes: readonly string[] = []
 ): string {
-  const parts: string[] = []
-  if (tools.length > 0) {
-    // GPT-Live otherwise often says it did or will do something and doesn't delegate.
-    parts.push(
-      "You can't change anything in the app yourself: only delegating does. When the user asks " +
-        'for something your tools do, delegate it right away, every time, also when asked again ' +
-        'or right after doing it. Until the result comes, say a word at most, like "Sure". Never ' +
-        "say it's done, or that you'll do it, without delegating: saying so changes nothing."
-    )
+  if (tools.length === 0 && !webSearch) {
+    return ''
   }
+  const backend = tools.map((t) => `- ${t.name}: ${t.description}`)
+  if (webSearch) {
+    backend.push('- Web search: current information like weather or news.')
+  }
+  const when = [
+    'The user asks for something a backend tool does, also when asked again or right after it was done.',
+    ...featureNotes,
+  ]
   // GPT-Live otherwise takes "speak up" as a way of speaking and only says it's louder.
   if (tools.some((t) => t.name === 'set_voice_volume')) {
-    parts.push(
-      '"Speak up", "talk louder" or "quieter" and "I can\'t hear you" are about the volume ' +
-        "setting of your voice, which only set_voice_volume changes: you can't speak louder " +
-        'yourself. Delegate them to set_voice_volume every time.'
+    when.push(
+      "The user asks you to speak up, talk louder or quieter, or can't hear you. That's the " +
+        "volume setting of your voice: only set_voice_volume changes it, you can't speak louder " +
+        'yourself.'
     )
   }
-  parts.push(...featureNotes)
-  if (tools.length > 0) {
-    const list = tools.map((t) => `${t.name} (${t.description})`).join('; ')
-    parts.push(`Your tools: ${list}.`)
-  }
-  if (webSearch) {
-    parts.push(
-      'For current information like weather or news, delegate: the delegate can search the web.'
-    )
-  }
-  return parts.join(' ')
+  when.push('A correction changes the work already requested.')
+  // GPT-Live otherwise often answers "Sure" or says it did something, and doesn't delegate.
+  const closing =
+    tools.length > 0
+      ? [
+          "You can't change anything in the app yourself: only the backend can. Replies like " +
+            '"Sure", "Pausing it", "Resuming it" or "I\'ll talk louder" change nothing unless ' +
+            'you delegate.',
+        ]
+      : []
+  return [
+    ['Delegation policy:', 'Backend tools:', ...backend].join('\n'),
+    ['Delegate to the backend when:', ...when.map((line) => `- ${line}`)].join('\n'),
+    [
+      'Do not delegate when:',
+      '- You can answer from the conversation or a still-current result.',
+      '- You need a brief clarification to understand the request.',
+    ].join('\n'),
+    [
+      ...closing,
+      'Delegate to the backend before giving an answer that depends on backend work.',
+      'Do not guess the result while waiting.',
+    ].join('\n'),
+  ].join('\n\n')
 }
 
 function joinInstructions(...parts: string[]): string {
@@ -371,13 +385,17 @@ const MAX_CONTEXT_CHARS = 1200
 
 const TOOLS_CONTINUED = 'Your tools, continued: '
 
-/** Text cut into pieces of at most `max` characters, after a "; " or ". " where it can. */
+/**
+ * Text cut into pieces of at most `max` characters: at a line end where it can, else after a "; "
+ * or ". ".
+ */
 export function splitContext(text: string, max = MAX_CONTEXT_CHARS): string[] {
   const pieces: string[] = []
   let rest = text.trim()
   while (rest.length > max) {
     const head = rest.slice(0, max)
-    const cut = Math.max(head.lastIndexOf('; '), head.lastIndexOf('. '))
+    const line = head.lastIndexOf('\n')
+    const cut = line > 0 ? line : Math.max(head.lastIndexOf('; '), head.lastIndexOf('. '))
     const end = cut > 0 ? cut + 1 : max
     pieces.push(rest.slice(0, end).trim())
     rest = rest.slice(end).trim()

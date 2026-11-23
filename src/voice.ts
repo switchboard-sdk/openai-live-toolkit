@@ -32,6 +32,6 @@ export const VOICES: readonly OpenAIVoice[] = [
 
 /** The node's defaults, mirrored so the hook can report them before start(). */
 export const DEFAULT_VOICE: OpenAIVoice = 'marin'
-export const DEFAULT_MODEL = 'gpt-live-1'
+export const DEFAULT_MODEL = 'gpt-live-1.1'
 /** Model that runs delegated work and calls the registered tools. */
 export const DEFAULT_DELEGATE_MODEL = 'gpt-5.5'
