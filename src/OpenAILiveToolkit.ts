@@ -919,10 +919,14 @@ export function createOpenAILiveToolkit() {
         extensions.Silero = {}
         extensions.Onnx = {}
       }
+      // Android's SDK only learns its temporary directory, where it keeps assets and the saved
+      // conversation, from the app.
+      const androidCache = Platform.OS === 'android' ? cachePath() : ''
       const res = c.callAction('switchboard', 'initialize', {
         appID: appId,
         appSecret,
         ...(apiUrl === '' ? {} : { apiURL: apiUrl }),
+        ...(androidCache === '' ? {} : { tempDirPath: `${androidCache}/switchboard` }),
         extensions,
       })
       if (res.error) {

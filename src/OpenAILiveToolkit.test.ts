@@ -2235,6 +2235,11 @@ describe('Android', () => {
       expect(logged()).toContain(DEVICE)
     })
 
+    it("gives the SDK the app's cache as its temporary directory", () => {
+      initialized()
+      expect(commandFor('initialize').params.params.tempDirPath).toBe('/mock/caches/switchboard')
+    })
+
     it('zips the diagnostic recordings with the log and shares the zip', async () => {
       const toolkit = await running({ ...CREDS, logFile: true, diagnosticAudioSeconds: 60 })
       scriptNative((req) =>
