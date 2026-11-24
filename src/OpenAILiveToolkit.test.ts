@@ -415,6 +415,18 @@ describe('tools', () => {
     expect(writes).toHaveLength(2)
     expect(writes.at(-1).params.value).toEqual([])
   })
+
+  it('logs the tool names when the engine is created and when they change', async () => {
+    const toolkit = await running({ ...CREDS, webSearch: true })
+    toolkit.registerTool({ name: 'a', description: 'A', handler: () => 1 })
+    toolkit.registerTool({ name: 'a', description: 'A again', handler: () => 1 })
+    toolkit.unregisterTool('a')
+    expect(logged().filter((line) => line.startsWith('tools: '))).toEqual([
+      'tools: web search',
+      'tools: a, web search',
+      'tools: web search',
+    ])
+  })
 })
 
 describe('tools note', () => {

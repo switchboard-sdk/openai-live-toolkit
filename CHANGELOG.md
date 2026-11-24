@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- The log lists the tools the model has when the engine is created and whenever they change.
+
 ## [1.0.0] - 2026-11-24
 
 ### Added
