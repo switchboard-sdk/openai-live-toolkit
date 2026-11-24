@@ -8,7 +8,7 @@
 # A channel such as develop publishes one schema, for its latest build of any version.
 set -euo pipefail
 
-SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-develop/3.3.0}"
+SWITCHBOARD_BUILD="${SWITCHBOARD_BUILD:-release/3.3.0}"
 PUBLIC_URL="https://switchboard-sdk-public.s3.amazonaws.com/builds"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
