@@ -1066,6 +1066,86 @@ describe('idle mode', () => {
   })
 })
 
+describe('standby', () => {
+  const STANDBY = { ...CREDS, standbyTimeoutMs: 30_000 }
+
+  it('gives the Live node standby when on, and none when off', async () => {
+    await running(STANDBY)
+    expect(liveNodeConfig().standbyTimeoutMs).toBe(30_000)
+    resetNativeMock()
+    happyPath()
+    await running()
+    expect(liveNodeConfig().standbyTimeoutMs).toBeUndefined()
+  })
+
+  it('ignores standby over the websocket, with a warning', async () => {
+    await running({ ...WEBSOCKET, standbyTimeoutMs: 30_000 })
+    expect(liveNodeConfig().standbyTimeoutMs).toBeUndefined()
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('standbyTimeoutMs ignored'))
+  })
+
+  it("doesn't store sessions for idle mode, which continues them from the conversation", async () => {
+    await running({ ...STANDBY, idleTimeoutMs: 120_000 })
+    expect(liveNodeConfig().store).toBe(false)
+    resetNativeMock()
+    happyPath()
+    await running({ ...STANDBY, idleTimeoutMs: 120_000, continueConversation: true })
+    expect(liveNodeConfig().store).toBe(true)
+  })
+
+  it('saves the conversation for continueConversation, and only then', async () => {
+    await running({ ...STANDBY, continueConversation: true })
+    expect(liveNodeConfig().saveConversation).toBe(true)
+    resetNativeMock()
+    happyPath()
+    await running(STANDBY)
+    expect(liveNodeConfig().saveConversation).toBeUndefined()
+    resetNativeMock()
+    happyPath()
+    await running({ ...CREDS, continueConversation: true })
+    expect(liveNodeConfig().saveConversation).toBeUndefined()
+  })
+
+  it('is paused from sessionPaused until sessionResumed, with the session up', async () => {
+    const toolkit = await running(STANDBY)
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
+    emitEvent('engine-1.liveNode', 'sessionPaused')
+    expect(toolkit.isPaused).toBe(true)
+    expect(toolkit.addContext('Now playing: jazz.')).toBe(true)
+    emitEvent('engine-1.liveNode', 'sessionResumed')
+    expect(toolkit.isPaused).toBe(false)
+    emitEvent('engine-1.liveNode', 'sessionPaused')
+    emitEvent('engine-1.liveNode', 'sessionDisconnected', { reason: 'dropped', reconnecting: true })
+    expect(toolkit.isPaused).toBe(false)
+  })
+
+  it('tells a session continued from the conversation its notes again, and a fork only changes', async () => {
+    const toolkit = await running({ ...STANDBY, idleTimeoutMs: 120_000 })
+    toolkit.setSessionNote('where', 'Where the car is: Budapest.')
+    emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1', continued: false })
+    emitEvent('engine-1.liveNode', 'sessionIdle', { sessionId: 's1' })
+    emitEvent('engine-1.liveNode', 'sessionWoken')
+    emitEvent('engine-1.liveNode', 'sessionStarted', {
+      sessionId: 's2',
+      continued: true,
+      forked: false,
+    })
+    emitEvent('engine-1.liveNode', 'sessionIdle', { sessionId: 's2' })
+    emitEvent('engine-1.liveNode', 'sessionWoken')
+    emitEvent('engine-1.liveNode', 'sessionStarted', {
+      sessionId: 's3',
+      continued: true,
+      forked: true,
+    })
+    expect(commandsFor('appendThinking').map((c) => c.params.params.text)).toEqual([
+      'Where the car is: Budapest.',
+      'Where the car is: Budapest.',
+    ])
+    expect(native.log).toHaveBeenCalledWith('session started s2 (continued)')
+    expect(native.log).toHaveBeenCalledWith('session started s3 (fork)')
+  })
+})
+
 describe('session notes', () => {
   const IDLE = { ...CREDS, idleTimeoutMs: 10_000 }
 
@@ -1898,12 +1978,13 @@ describe('stop / release', () => {
     expect(forkSessionIds()).toEqual(['', ''])
   })
 
-  it('newConversation on a stopped engine only forgets the session', async () => {
+  it('newConversation on a stopped engine forgets the conversation without a session', async () => {
     const toolkit = await running(CONTINUE)
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
     toolkit.stop()
     toolkit.newConversation()
     expect(commandsFor('resetSession')).toHaveLength(0)
+    expect(commandsFor('forgetConversation')).toHaveLength(1)
     await toolkit.start()
     expect(forkSessionIds()).toEqual(['', ''])
   })
@@ -1915,10 +1996,17 @@ describe('stop / release', () => {
     expect(toolkit.isRunning).toBe(true)
   })
 
+  it('newConversation without an engine has the OpenAI extension delete the saved conversation', () => {
+    const toolkit = initialized(CONTINUE)
+    toolkit.newConversation()
+    expect(commandsFor('forgetConversation').map((c) => c.params.objectURI)).toEqual(['OpenAI'])
+  })
+
   it('release destroys the engine so the next start rebuilds it', async () => {
     const toolkit = await running()
     toolkit.release()
     expect(commandFor('destroyEngine').params.params).toEqual({ engineID: 'engine-1' })
+    expect(commandFor('forgetConversation').params.objectURI).toBe('OpenAI')
     await toolkit.start()
     expect(commandsFor('createEngine')).toHaveLength(2)
   })
@@ -2145,6 +2233,11 @@ describe('Android', () => {
     it('starts the log with the app and device', () => {
       initialized({ ...CREDS, logFile: true })
       expect(logged()).toContain(DEVICE)
+    })
+
+    it("gives the SDK the app's cache as its temporary directory", () => {
+      initialized()
+      expect(commandFor('initialize').params.params.tempDirPath).toBe('/mock/caches/switchboard')
     })
 
     it('zips the diagnostic recordings with the log and shares the zip', async () => {

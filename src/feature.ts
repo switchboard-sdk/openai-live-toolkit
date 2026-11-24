@@ -18,8 +18,8 @@ export interface ToolkitFeature {
   ownsNode(nodeId: string): boolean
   /** An event from one of its nodes. */
   handleNodeEvent(nodeId: string, name: string, data: unknown): void
-  /** A session came up. `continued` when it forks the one before, so it holds what that one was told. */
-  sessionStarted(continued: boolean): void
+  /** A session came up. `forked` when it forks the one before, so it holds what that one was told. */
+  sessionStarted(forked: boolean): void
   /** The engine's state changed (iOS): `'interrupted'` by another app's audio, `'running'` again. */
   engineStateChanged(state: string | undefined, reason: string | undefined): void
   /** The engine stopped. */

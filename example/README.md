@@ -1,6 +1,6 @@
 # Example app
 
-A GPT-Live voice assistant with two screens that share one conversation: a live transcript of both sides, start/stop, and idle mode after 15 s of silence.
+A GPT-Live voice assistant with two screens that share one conversation: a live transcript of both sides, start/stop, standby after 15 s of silence and idle mode after a minute.
 
 - **Basics** ([`BasicsScreen.tsx`](BasicsScreen.tsx)) is the core, as in the README's quickstart: two tools (`get_time`, `set_background_color`), mute, and the Bluetooth microphone choice.
 - **Radio** ([`RadioScreen.tsx`](RadioScreen.tsx)) is an example implementation of [media](../docs/media.md): three stations the user and the model can play with `useMediaTools`, what's playing, Now Playing on the iOS lock screen, and the offline notice. Leaving the screen stops the radio, since the model's media tools go with it.
@@ -41,7 +41,7 @@ On Basics:
 
 - Talk over the assistant mid-sentence. GPT-Live handles the interruption itself.
 - "What time is it?" and "Make the background dark blue" exercise the tools through delegation.
-- Stay quiet for 15 s and the connection shows `idle`. Ask something about the earlier conversation: the session reopens and the model remembers it.
+- Stay quiet for 15 s and the connection shows `paused`; speak and it answers right away. Stay quiet for a minute and it shows `idle`. Ask something about the earlier conversation: the session reopens and the model remembers it.
 
 On Radio, after Start talking:
 

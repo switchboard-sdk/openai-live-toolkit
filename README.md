@@ -85,7 +85,7 @@ The audio engine, the `OpenAI.Live` node and the toolkit's provider run on the p
 ## Before you ship
 
 - **The OpenAI key stays on the backend.** By default the session runs over WebRTC, and the Switchboard backend creates it with your Switchboard app's OpenAI key, so the app ships without one. The `websocket` transport needs the key in the app.
-- **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends, or set `idleTimeoutMs` to close the session during silences and reopen it when the user speaks ([Idle mode](docs/getting-started.md#idle-mode)).
+- **Billing.** GPT-Live bills per second of session, including while the app is backgrounded. Stop the engine when the conversation ends, or set `idleTimeoutMs` to close the session during silences and reopen it when the user speaks ([Idle mode](docs/getting-started.md#idle-mode)). Over WebRTC, `standbyTimeoutMs` pauses the model in short silences at a lower rate and resumes it in about half a second ([Standby](docs/getting-started.md#standby)).
 - **iOS 15.1**, React Native's minimum. Android needs API 24 and an app built with NDK 29 ([Android setup](docs/getting-started.md#android-setup)).
 
 ## Documentation

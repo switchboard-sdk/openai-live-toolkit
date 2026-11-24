@@ -19,7 +19,8 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | `delegateInstructions` | `''` | Added after the toolkit's own delegate instructions (always call the matching tool). |
 | `idleTimeoutMs` | off | Close the session after this long with nobody talking and reopen it on speech. See [Idle mode](getting-started.md#idle-mode). |
 | `wakeGraceMs` | `5000` | After a wake, close again after this long unless the model replies. Capped at `idleTimeoutMs`; `0` turns it off. |
-| `continueConversation` | `false` | Continue the conversation when a session reopens: after a stop, or from a saved `sessionId` after the app was killed. While on, OpenAI stores each session. See [Continuing a conversation](getting-started.md#continuing-a-conversation). |
+| `standbyTimeoutMs` | off | Over `'webrtc'`: pause the model after this long with nobody talking, and resume it about half a second after the user speaks, without reconnecting. 5000 to 60000. Set it above the slowest tool. See [Standby](getting-started.md#standby). |
+| `continueConversation` | `false` | Continue the conversation when a session reopens: after a stop, or from a saved `sessionId` after the app was killed. While on, OpenAI stores each session. With `standbyTimeoutMs`, the conversation is also kept on the device for up to 24 h, so it continues with standby. See [Continuing a conversation](getting-started.md#continuing-a-conversation). |
 | `webSearch` | `false` | Give the delegate OpenAI's hosted web search, so the model can answer about weather, news and other current information. Each search is billed. |
 | `logFile` | `false` | Write the SDK's log and the toolkit's events (sessions, idle and wake, delegations, tool calls, errors, on iOS the engine's state and route, and on Android audio focus changes) to a file in the caches directory, for `shareLogs()`. It starts with the app's name, version and build, the OS version, the device model and the SDK version. |
 | `logConversation` | `false` | Include the transcript and tool arguments and results in that log. |
@@ -38,13 +39,13 @@ Initializes the Switchboard SDK once for the app and exposes the toolkit through
 | Field | Notes |
 | --- | --- |
 | `isRunning` | Engine started. |
-| `connectionStatus` | `'none' \| 'connecting' \| 'connected' \| 'idle' \| 'error'`. `'idle'`: idle mode closed the session and it reopens on speech. `'error'` stays until a session comes up. |
+| `connectionStatus` | `'none' \| 'connecting' \| 'connected' \| 'paused' \| 'idle' \| 'error'`. `'paused'`: standby paused the model, and the session resumes on speech. `'idle'`: idle mode closed the session and it reopens on speech. `'error'` stays until a session comes up. |
 | `activity` | `'listening' \| 'userSpeaking' \| 'thinking' \| 'speaking'`, while connected. `'userSpeaking'` comes from the voice activity detector (idle mode or media only) and the user's transcript, `'speaking'` from the model's transcript; both end a second after the last fragment. `'thinking'` lasts from a delegation until the model speaks, at most 15 s. |
 | `error` | Outstanding fatal `OpenAILiveError`, or null. |
-| `start(options?)`, `stop()`, `release()` | Start opens a session; with `continueConversation` it continues the conversation a stop closed, or `options.continueSessionId`. Stop closes it and keeps the engine; release frees it. |
+| `start(options?)`, `stop()`, `release()` | Start opens a session; with `continueConversation` it continues the conversation a stop closed, or `options.continueSessionId`. Stop closes it and keeps the engine; release frees it, and deletes the conversation kept on the device. |
 | `sessionId` | The latest session's id, for the app to save and pass to `start` as `continueSessionId`. Null before the first session and after `newConversation()`. |
-| `sessionContinued` | Whether the session that's up continues the conversation of the one before it, as when idle mode wakes it, so it still holds the context that one was given. The `sessionStarted` live event carries it as `continued`. |
-| `newConversation()` | Forgets the conversation and clears the transcript. A new session starts right away, also while idle. |
+| `sessionContinued` | Whether the session that's up continues the conversation of the one before it, as when idle mode wakes it. The `sessionStarted` live event carries it as `continued`, and `forked` when the session forked the one before, so it holds the context that one was given; with standby a session is continued from the conversation instead, and the toolkit gives it its notes again. |
+| `newConversation()` | Forgets the conversation and clears the transcript, and deletes the conversation kept on the device. A new session starts right away while running, also while idle. |
 | `hasMicrophonePermission`, `requestMicrophonePermission()` | `start()` requests it automatically. |
 | `transcript`, `clearTranscript()` | `TranscriptEntry[]`: `{ id, speaker: 'user' \| 'assistant', text, startMs, endMs }`, in the order things were said. A new line starts whenever the speaker changes. |
 | `instructions`, `setInstructions(text)` | Fixed per session: while running this starts a new session and drops the conversation. `addContext` tells a live session something without dropping it. |

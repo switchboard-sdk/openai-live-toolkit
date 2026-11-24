@@ -26,8 +26,11 @@ import { Segments } from './ui';
 
 const INSTRUCTIONS =
   'You are a terse, friendly voice assistant. Keep answers to one sentence.';
+// Pause the model after this much silence, at a lower rate; speaking resumes it in about half a
+// second. Above the slowest tool, web search.
+const STANDBY_TIMEOUT_MS = 15_000;
 // Close the session after this much silence; speaking reopens it.
-const IDLE_TIMEOUT_MS = 15_000;
+const IDLE_TIMEOUT_MS = 60_000;
 
 const SCREENS = [
   { value: 'basics', label: 'Basics' },
@@ -51,6 +54,7 @@ export default function App(): React.JSX.Element {
         appSecret={SWITCHBOARD_APP_SECRET || undefined}
         apiUrl={SWITCHBOARD_API_URL}
         instructions={INSTRUCTIONS}
+        standbyTimeoutMs={STANDBY_TIMEOUT_MS}
         idleTimeoutMs={IDLE_TIMEOUT_MS}
         continueConversation
         webSearch
