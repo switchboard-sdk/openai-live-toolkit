@@ -668,6 +668,8 @@ export function createOpenAILiveToolkit() {
   const toolEventsDue = new Map<string, string>()
 
   let webSearch = false
+  // The tool names last logged, so the log shows which tools the model had.
+  let loggedTools = ''
   let logConversation = false
   let otherAudio: { mix: boolean; ducking: OtherAudioDucking } = { mix: false, ducking: 'min' }
   let duckOtherApps = false
@@ -1138,6 +1140,8 @@ export function createOpenAILiveToolkit() {
         )
       }
       engineId = id
+      loggedTools = ''
+      logTools()
     }
 
     // Before the streams open, so AEC engages on the loudspeaker.
@@ -1405,7 +1409,17 @@ export function createOpenAILiveToolkit() {
     if (engineId) {
       client?.setValue(LIVE_NODE, 'tools', delegateTools())
       syncToolsNote()
+      logTools()
     }
+  }
+
+  function logTools(): void {
+    const names = [...tools.keys(), ...(webSearch ? ['web search'] : [])].join(', ') || 'none'
+    if (names === loggedTools) {
+      return
+    }
+    loggedTools = names
+    log(`tools: ${names}`)
   }
 
   /** Function definitions for the registered tools (handlers stripped). */
