@@ -21,13 +21,14 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - run: npm run build
-      # Node 22 bundles npm 10; trusted publishing needs npm 11.5.1 or later.
-      - name: Publish
+      # Node 22 bundles npm 10; staging needs npm 11.15.0 or later.
+      - name: Stage
         run: |
           spec="$(node -p "require('./package.json').name")@$(node -p "require('./package.json').version")"
           if npm view "$spec" version > /dev/null 2>&1; then
             echo "$spec is already on npm"
             exit 0
           fi
+          # Trusted publishing only stages it: a maintainer approves it with 2FA (CONTRIBUTING.md).
           # npm 11 wants a tag for a prerelease. There's no stable release yet, so a beta is latest.
-          npx --yes npm@11 publish --tag latest
+          npx --yes npm@11 stage publish --tag latest
