@@ -92,7 +92,9 @@ export interface OpenAILiveToolkitInitializeOptions {
   /**
    * Continue the conversation when a session reopens: `start()` after `stop()` forks the session
    * the stop closed, and `start({ continueSessionId })` forks one the app saved, e.g. before it
-   * was killed. While on, OpenAI stores each session. Off by default.
+   * was killed. While on, OpenAI stores each session. With {@link standbyTimeoutMs}, the conversation
+   * is also kept on the device for up to 24 h, so it continues with standby rather than as a fork;
+   * {@link OpenAILiveToolkit.newConversation} deletes it. Off by default.
    */
   continueConversation?: boolean
   /**
@@ -501,6 +503,8 @@ function buildLiveEngine(
         tools,
         // A closed session can only be continued if OpenAI stored it.
         store,
+        // With standby, continued from what was said, also after the app restarted.
+        ...(store && standbyTimeoutMs > 0 ? { saveConversation: true } : {}),
         ...(idle ? { idleTimeoutMs: idle.timeoutMs, wakeGraceMs: idle.wakeGraceMs } : {}),
         ...(standbyTimeoutMs > 0 ? { standbyTimeoutMs } : {}),
       },
@@ -1759,7 +1763,12 @@ export function createOpenAILiveToolkit() {
    */
   function newConversation(): void {
     lastSessionId = null
-    if (!client || !running) {
+    if (!client || !engineId) {
+      return
+    }
+    if (!running) {
+      // Also deletes the conversation the node saved for continueConversation.
+      client.callAction(LIVE_NODE, 'forgetConversation')
       return
     }
     log('new conversation')

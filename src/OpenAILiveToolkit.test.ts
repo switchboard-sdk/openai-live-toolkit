@@ -1093,6 +1093,19 @@ describe('standby', () => {
     expect(liveNodeConfig().store).toBe(true)
   })
 
+  it('saves the conversation for continueConversation, and only then', async () => {
+    await running({ ...STANDBY, continueConversation: true })
+    expect(liveNodeConfig().saveConversation).toBe(true)
+    resetNativeMock()
+    happyPath()
+    await running(STANDBY)
+    expect(liveNodeConfig().saveConversation).toBeUndefined()
+    resetNativeMock()
+    happyPath()
+    await running({ ...CREDS, continueConversation: true })
+    expect(liveNodeConfig().saveConversation).toBeUndefined()
+  })
+
   it('is paused from sessionPaused until sessionResumed, with the session up', async () => {
     const toolkit = await running(STANDBY)
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
@@ -1965,12 +1978,13 @@ describe('stop / release', () => {
     expect(forkSessionIds()).toEqual(['', ''])
   })
 
-  it('newConversation on a stopped engine only forgets the session', async () => {
+  it('newConversation on a stopped engine forgets the conversation without a session', async () => {
     const toolkit = await running(CONTINUE)
     emitEvent('engine-1.liveNode', 'sessionStarted', { sessionId: 's1' })
     toolkit.stop()
     toolkit.newConversation()
     expect(commandsFor('resetSession')).toHaveLength(0)
+    expect(commandsFor('forgetConversation')).toHaveLength(1)
     await toolkit.start()
     expect(forkSessionIds()).toEqual(['', ''])
   })

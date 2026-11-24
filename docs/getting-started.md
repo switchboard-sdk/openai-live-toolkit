@@ -152,7 +152,8 @@ Over `'webrtc'`, set `standbyTimeoutMs` on the provider to pause the model in sh
 - **With idle mode.** Paused time is still billed, so for long silences set `idleTimeoutMs` above `standbyTimeoutMs`, e.g. 30 s of standby and a few minutes of idle mode. Standby covers the short silences, and idle mode closes the session in the long ones.
 - **The conversation after idle mode.** OpenAI doesn't allow standby on a fork, so idle mode reopens the session as a new one with the conversation so far: what was heard and said, the tools called, and the context the session was given. It takes the newest of it, up to 128 messages and about 8,000 characters. The new session gets the current instructions and voice, and the toolkit gives it its notes again. Sessions aren't stored.
 - **Slow tools.** A tool result that comes after the session paused isn't spoken, and the model doesn't bring it up later. OpenAI pauses as soon as the delegate finishes, so set `standbyTimeoutMs` above the slowest tool, with a few seconds to spare.
-- **Continued conversations.** A conversation continued with `continueConversation`, after a stop or from a saved `sessionId`, is a fork, so it has no standby, and idle mode keeps forking it.
+- **Continued conversations.** With `continueConversation`, `start()` after `stop()` and `start({ continueSessionId })` after the app was killed continue the conversation the same way, with standby, rather than forking. For that the conversation is also kept on the device: see below. A `continueSessionId` of an older conversation, or one from another device, is forked, without standby.
+- **What's kept on the device.** With `continueConversation`, the conversation is saved to a file in the app's temporary directory (`tmp/` on iOS, which backups leave out, and the cache directory on Android), which other apps can't read and the OS encrypts at rest. It holds what was heard and said, the tools called with their arguments, and the context the session was given. A new conversation or `newConversation()` deletes it, also while stopped, and it's deleted once it's 24 h old. Call `newConversation()` when a user signs out, and mention it in your privacy policy if that applies.
 - **Muted.** Speech doesn't resume a paused session while the model is muted.
 
 ## Continuing a conversation
@@ -164,6 +165,7 @@ Set `continueConversation` on the provider to keep the conversation when a sessi
 - **Instructions and voice.** A fork keeps those of the session it continues, so after `setInstructions` or `setVoice` the next session starts fresh. Save them with a session id, and skip the resume when they've changed.
 - **Starting over.** `newConversation()` forgets the conversation and clears the transcript; a new session starts right away, also while idle. After `release()` the next session starts fresh too.
 - **If it can't be continued**, for example OpenAI no longer has the stored session, a new session starts instead.
+- **With standby**, a continued conversation keeps standby: see [Standby](#standby).
 
 ## Other apps' audio
 
