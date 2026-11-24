@@ -29,14 +29,16 @@ import { appendFragment, nextSessionOffset, type TranscriptEntry } from './trans
 import { voiceVolumeTool } from './voiceVolumeTool'
 
 /**
- * Session connection state. `'idle'` means idle mode closed the session and it reopens
- * when the user speaks. `'error'` means the session was attempted and refused — see
+ * Session connection state. `'paused'` means standby paused the model: the session stays
+ * connected and resumes when the user speaks. `'idle'` means idle mode closed the session and it
+ * reopens when the user speaks. `'error'` means the session was attempted and refused — see
  * {@link OpenAILiveToolkitContextValue.error} for why.
  */
 export type OpenAILiveToolkitConnectionStatus =
   | 'none'
   | 'connecting'
   | 'connected'
+  | 'paused'
   | 'idle'
   | 'error'
 
@@ -229,6 +231,13 @@ export interface OpenAILiveToolkitProviderProps {
    */
   wakeGraceMs?: number
   /**
+   * Over `webrtc`: pause the model after this many ms with nobody talking, and resume it when the
+   * user speaks, without reconnecting; paused time is billed at a lower rate. 5000 to 60000. Set it
+   * above the slowest tool: a result that comes after the pause isn't spoken. Off by default.
+   * Fixed once initialized.
+   */
+  standbyTimeoutMs?: number
+  /**
    * Continue the conversation when a session reopens: `start` after `stop` forks the session the
    * stop closed, and `start({ continueSessionId })` forks one the app saved. While on, OpenAI
    * stores each session. Off by default. Fixed once initialized.
@@ -306,9 +315,9 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
 
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<OpenAILiveError | null>(null)
-  const [sessionState, setSessionState] = useState<'none' | 'connecting' | 'connected' | 'idle'>(
-    'none'
-  )
+  const [sessionState, setSessionState] = useState<
+    'none' | 'connecting' | 'connected' | 'paused' | 'idle'
+  >('none')
   const [activity, setActivity] = useState<OpenAILiveActivity>('listening')
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -355,6 +364,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
       delegateInstructions: props.delegateInstructions,
       idleTimeoutMs: props.idleTimeoutMs,
       wakeGraceMs: props.wakeGraceMs,
+      standbyTimeoutMs: props.standbyTimeoutMs,
       continueConversation: props.continueConversation,
       webSearch: props.webSearch,
       logFile: props.logFile,
@@ -412,6 +422,13 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
         case 'sessionIdle':
           setSessionState('idle')
           showActivity('listening')
+          break
+        case 'sessionPaused':
+          setSessionState('paused')
+          showActivity('listening')
+          break
+        case 'sessionResumed':
+          setSessionState('connected')
           break
         case 'sessionClosed': {
           const reason = (e.data as { reason?: string })?.reason

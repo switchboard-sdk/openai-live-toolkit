@@ -71,9 +71,18 @@ export interface OpenAILiveToolkitInitializeOptions {
   /**
    * Close the session after this many ms with nobody talking, and reopen it when the user
    * speaks, continuing the conversation. Nothing is billed while it's closed. Off by default.
-   * While on, OpenAI stores each session so the next one can continue it.
+   * While on, OpenAI stores each session so the next one can continue it, unless
+   * {@link standbyTimeoutMs} is set.
    */
   idleTimeoutMs?: number
+  /**
+   * Over `webrtc`: pause the model after this many ms with nobody talking, and resume it about half
+   * a second after the user speaks, without reconnecting. Paused time is billed at a lower rate.
+   * 5000 to 60000, in whole seconds. A tool result that comes after the pause isn't spoken, so set
+   * it above the slowest tool. With {@link idleTimeoutMs} above it, the session is still closed in
+   * longer silences, and reopened with the conversation so far. Off by default.
+   */
+  standbyTimeoutMs?: number
   /**
    * After a wake, close again after this many ms unless the model replies or delegates. Keeps a
    * wake on a noise (a TV, the phone vibrating) from costing a full {@link idleTimeoutMs}.
@@ -427,6 +436,7 @@ function buildLiveEngine(
     delegateInstructions: string
   },
   idle: { timeoutMs: number; wakeGraceMs: number } | null,
+  standbyTimeoutMs: number,
   store: boolean,
   otherAudio: { mix: boolean; ducking: OtherAudioDucking },
   microphone: Microphone,
@@ -492,6 +502,7 @@ function buildLiveEngine(
         // A closed session can only be continued if OpenAI stored it.
         store,
         ...(idle ? { idleTimeoutMs: idle.timeoutMs, wakeGraceMs: idle.wakeGraceMs } : {}),
+        ...(standbyTimeoutMs > 0 ? { standbyTimeoutMs } : {}),
       },
     },
     { id: LIVE_SPLITTER_NODE, type: 'Switchboard.BusSplitter' },
@@ -636,6 +647,10 @@ export function createOpenAILiveToolkit() {
   // Idle mode. 0 is off.
   let idleTimeoutMs = 0
   let wakeGraceMs = DEFAULT_WAKE_GRACE_MS
+  // Standby. 0 is off.
+  let standbyTimeoutMs = 0
+  // Standby paused the model; the session stays up and resumes when the user speaks.
+  let paused = false
   let continueConversation = false
   const voiceLevelListeners = new Set<VoiceLevelListener>()
   let voiceLevelTimer: ReturnType<typeof setInterval> | null = null
@@ -847,6 +862,13 @@ export function createOpenAILiveToolkit() {
     session.delegateInstructions = options.delegateInstructions ?? ''
     idleTimeoutMs = Math.max(0, options.idleTimeoutMs ?? 0)
     wakeGraceMs = Math.max(0, options.wakeGraceMs ?? DEFAULT_WAKE_GRACE_MS)
+    standbyTimeoutMs = Math.max(0, options.standbyTimeoutMs ?? 0)
+    if (transport === 'websocket' && standbyTimeoutMs > 0) {
+      console.warn(
+        '[OpenAILiveToolkit] standbyTimeoutMs ignored: standby needs the webrtc transport.'
+      )
+      standbyTimeoutMs = 0
+    }
     continueConversation = options.continueConversation ?? false
     webSearch = options.webSearch ?? false
     otherAudio = {
@@ -912,7 +934,7 @@ export function createOpenAILiveToolkit() {
     const sdkVersion = c.getValue('switchboard', 'versionName').result
     const sdkBuild = c.getValue('switchboard', 'buildNumber').result
     log(
-      `initialize: ${transport}, idle timeout ${idleTimeoutMs} ms, ` +
+      `initialize: ${transport}, idle timeout ${idleTimeoutMs} ms, standby ${standbyTimeoutMs} ms, ` +
         `SDK ${sdkVersion ?? '?'} (${sdkBuild ?? '?'})`
     )
     // An engine that survived the reload: a running one is adopted, keeping the settings it was
@@ -1086,7 +1108,9 @@ export function createOpenAILiveToolkit() {
           lastWrittenToolsNote,
           session,
           idleTimeoutMs > 0 ? { timeoutMs: idleTimeoutMs, wakeGraceMs } : null,
-          idleTimeoutMs > 0 || continueConversation,
+          standbyTimeoutMs,
+          // With standby, idle mode continues a closed session from its conversation, not a fork.
+          continueConversation || (idleTimeoutMs > 0 && standbyTimeoutMs === 0),
           otherAudio,
           microphone,
           voiceProcessing,
@@ -1725,6 +1749,7 @@ export function createOpenAILiveToolkit() {
 
   function resetIdle(): void {
     idle = false
+    paused = false
     userSpeaking = false
   }
 
@@ -1739,6 +1764,7 @@ export function createOpenAILiveToolkit() {
     }
     log('new conversation')
     idle = false
+    paused = false
     client.callAction(LIVE_NODE, 'resetSession')
   }
 
@@ -1871,13 +1897,22 @@ export function createOpenAILiveToolkit() {
         break
       }
       case 'sessionStarted': {
-        const data = event.data as { sessionId?: string; continued?: boolean } | undefined
-        // Whether it forked the last session, so it still holds the context that one was given.
+        const data = event.data as
+          | { sessionId?: string; continued?: boolean; forked?: boolean }
+          | undefined
+        // Whether it continues the conversation, and whether by forking the last session, so it still
+        // holds the context that one was given. A session continued from the conversation gets the
+        // current instructions and only as much of the conversation as fits, so it's told again like a
+        // new one. An SDK without forked only continues by forking.
         const continued = data?.continued === true
+        const forked = continued && (data?.forked ?? true)
         sessionLive = true
         idle = false
+        paused = false
         lastSessionId = data?.sessionId || null
-        log(`session started ${lastSessionId}${continued ? ' (fork)' : ''}`)
+        log(
+          `session started ${lastSessionId}${forked ? ' (fork)' : continued ? ' (continued)' : ''}`
+        )
         event.data = { ...data, continued }
         // A session starts unmuted, or with the last mute the node accepted, which misses changes
         // made while no session was live. Send the app's choice either way.
@@ -1885,7 +1920,7 @@ export function createOpenAILiveToolkit() {
         toolEventsDue.clear()
         // A new session reads the instructions last written to the node, while a fork knows what
         // the session it continues was told. Either way, bring its tools note up to date.
-        if (!continued) {
+        if (!forked) {
           sessionToolsNote = lastWrittenToolsNote
           notesTold.clear()
         }
@@ -1897,7 +1932,7 @@ export function createOpenAILiveToolkit() {
         }
         syncOtherAppsDuck()
         syncToolsNote()
-        features.forEach((f) => f.sessionStarted(continued))
+        features.forEach((f) => f.sessionStarted(forked))
         syncSessionNotes()
         stopWatchingOffline()
         announceBack()
@@ -1911,12 +1946,22 @@ export function createOpenAILiveToolkit() {
         flushTranscript()
         log('idle: session ended')
         idle = true
+        paused = false
         sessionLive = false
         syncOtherAppsDuck()
         break
       case 'sessionWoken':
         log('wake')
         idle = false
+        break
+      case 'sessionPaused':
+        flushTranscript()
+        log('standby: paused')
+        paused = true
+        break
+      case 'sessionResumed':
+        log('standby: resumed')
+        paused = false
         break
       case 'inputTranscriptDelta':
         logTranscript('user', (event.data as { delta?: string } | undefined)?.delta ?? '')
@@ -1940,6 +1985,7 @@ export function createOpenAILiveToolkit() {
         flushTranscript()
         log(`${event.name}${event.data ? ` ${JSON.stringify(event.data)}` : ''}`)
         sessionLive = false
+        paused = false
         syncOtherAppsDuck()
         if (event.name === 'sessionStarting') {
           break
@@ -2030,6 +2076,10 @@ export function createOpenAILiveToolkit() {
     /** Whether idle mode closed the session; it reopens when the user speaks. */
     get isIdle(): boolean {
       return idle
+    },
+    /** Whether standby paused the model; the session stays up and resumes when the user speaks. */
+    get isPaused(): boolean {
+      return paused
     },
     /** Why the last {@link initialize} was refused by the SDK, or null. */
     get initError(): string | null {

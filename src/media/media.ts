@@ -605,8 +605,8 @@ export function createMedia(host: FeatureHost) {
     ownsNode: (nodeId) => options !== null && nodeId === PLAYER_NODE,
     handleNodeEvent,
 
-    sessionStarted(continued) {
-      if (!continued) {
+    sessionStarted(forked) {
+      if (!forked) {
         sessionNowPlaying = ''
       }
       syncNowPlaying()

@@ -166,6 +166,18 @@ describe('session state', () => {
     expect(result.current.connectionStatus).toBe('connecting')
   })
 
+  it("shows 'paused' while standby has paused the model", () => {
+    const { result } = renderProvider({ standbyTimeoutMs: 30_000 })
+    expect(toolkit.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ standbyTimeoutMs: 30_000 })
+    )
+    emitLive('sessionStarted', { sessionId: 's1' })
+    emitLive('sessionPaused')
+    expect(result.current.connectionStatus).toBe('paused')
+    emitLive('sessionResumed')
+    expect(result.current.connectionStatus).toBe('connected')
+  })
+
   it("shows 'error' for a fatal session failure until a session comes up", () => {
     const { result } = renderProvider()
     act(() => mockModule.__emitError(new OpenAILiveError('SESSION_FAILED', 'invalid key', true)))
