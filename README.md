@@ -1,5 +1,9 @@
 # Full-duplex voice agents in React Native
 
+[![npm](https://img.shields.io/npm/v/@synervoz/openai-live-toolkit)](https://www.npmjs.com/package/@synervoz/openai-live-toolkit)
+[![CI](https://img.shields.io/github/actions/workflow/status/switchboard-sdk/openai-live-toolkit/ci.yml?branch=main&label=CI)](https://github.com/switchboard-sdk/openai-live-toolkit/actions/workflows/ci.yml)
+[![License](https://img.shields.io/npm/l/@synervoz/openai-live-toolkit)](LICENSE.txt)
+
 OpenAI's GPT-Live (`gpt-live-1.1`) is a full-duplex voice model. It listens while it speaks and decides for itself when to take a turn, when to back off, and when someone has interrupted it. There is no turn detection to configure and no barge-in to tune. Conversations feel closer to talking with a person.
 
 Switchboard's OpenAI Live Toolkit (`@synervoz/openai-live-toolkit`) puts that model in a React Native app. One provider and two hooks handle the GPT-Live session, microphone and speaker I/O, platform echo cancellation, tool calls into your app, and a live transcript of both sides. It's built on the [Switchboard SDK](https://docs.switchboard.audio/).
@@ -96,7 +100,12 @@ The audio engine, the `OpenAI.Live` node and the toolkit's provider run on the p
 - [API reference](docs/api-reference.md) covers the provider, the `useOpenAILiveToolkit()` hook, every export, and the error codes.
 - [Example app](example/README.md) has two screens: Basics, with a transcript, mute, and two tools, and Radio, an example implementation of media.
 - The [`OpenAI.Live` node](https://docs.switchboard.audio/extensions/openai/openai-live-node/) in the Switchboard docs is what the toolkit runs on. Use it directly in native iOS, Android, macOS and Linux apps.
+- [Changelog](CHANGELOG.md) lists what changed in each release.
 
 ## Questions
 
 Open an [issue](https://github.com/switchboard-sdk/openai-live-toolkit/issues) for bugs and questions.
+
+## License
+
+MIT. See [LICENSE](LICENSE.txt).
