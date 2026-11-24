@@ -1763,12 +1763,13 @@ export function createOpenAILiveToolkit() {
    */
   function newConversation(): void {
     lastSessionId = null
-    if (!client || !engineId) {
+    if (!client) {
       return
     }
-    if (!running) {
-      // Also deletes the conversation the node saved for continueConversation.
-      client.callAction(LIVE_NODE, 'forgetConversation')
+    if (!engineId || !running) {
+      // Also deletes the conversation saved for continueConversation; without an engine, the OpenAI
+      // extension does.
+      client.callAction(engineId ? LIVE_NODE : 'OpenAI', 'forgetConversation')
       return
     }
     log('new conversation')
@@ -1795,6 +1796,8 @@ export function createOpenAILiveToolkit() {
     lastSessionId = null
     if (client && engineId) {
       client.callAction('switchboard', 'destroyEngine', { engineID: engineId })
+      // The next session starts fresh, so the conversation saved for continueConversation goes too.
+      client.callAction('OpenAI', 'forgetConversation')
       engineId = null
       running = false
       syncVoiceLevels()

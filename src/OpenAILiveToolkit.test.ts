@@ -1996,10 +1996,17 @@ describe('stop / release', () => {
     expect(toolkit.isRunning).toBe(true)
   })
 
+  it('newConversation without an engine has the OpenAI extension delete the saved conversation', () => {
+    const toolkit = initialized(CONTINUE)
+    toolkit.newConversation()
+    expect(commandsFor('forgetConversation').map((c) => c.params.objectURI)).toEqual(['OpenAI'])
+  })
+
   it('release destroys the engine so the next start rebuilds it', async () => {
     const toolkit = await running()
     toolkit.release()
     expect(commandFor('destroyEngine').params.params).toEqual({ engineID: 'engine-1' })
+    expect(commandFor('forgetConversation').params.objectURI).toBe('OpenAI')
     await toolkit.start()
     expect(commandsFor('createEngine')).toHaveLength(2)
   })
