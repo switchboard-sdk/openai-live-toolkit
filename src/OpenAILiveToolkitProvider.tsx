@@ -409,7 +409,7 @@ export function OpenAILiveToolkitProvider(props: OpenAILiveToolkitProviderProps)
             return entries
           })
           break
-        case 'sessionEnded':
+        case 'sessionIdle':
           setSessionState('idle')
           showActivity('listening')
           break

@@ -160,7 +160,7 @@ describe('session state', () => {
       expect.objectContaining({ idleTimeoutMs: 20_000 })
     )
     emitLive('sessionStarted', { sessionId: 's1' })
-    emitLive('sessionEnded')
+    emitLive('sessionIdle', { sessionId: 's1' })
     expect(result.current.connectionStatus).toBe('idle')
     emitLive('sessionStarting')
     expect(result.current.connectionStatus).toBe('connecting')
@@ -252,10 +252,10 @@ describe('activity', () => {
     expect(result.current.activity).toBe('thinking')
   })
 
-  it('goes back to listening when the session closes', () => {
+  it('goes back to listening when idle mode closes the session', () => {
     const { result } = connected()
     emitLive('outputTranscriptDelta', { delta: 'Sure.', startMs: 0, endMs: 400 })
-    emitLive('sessionEnded')
+    emitLive('sessionIdle', { sessionId: 's1' })
     expect(result.current.activity).toBe('listening')
   })
 })

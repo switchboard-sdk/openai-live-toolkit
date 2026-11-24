@@ -409,9 +409,10 @@ export function splitContext(text: string, max = MAX_CONTEXT_CHARS): string[] {
 /**
  * The Switchboard graph the toolkit runs:
  * microphone → mono → OpenAI.Live → volume → mixer → limiter → speaker.
- * The model owns turn-taking. In idle mode a VAD taps the input the model hears, only to
- * tell when the user starts talking again. Features, such as media, add their nodes and play into
- * the mixer; as part of the output, echo cancellation keeps them from the model.
+ * The model owns turn-taking. In idle mode a VAD taps the input the model hears, and its speech
+ * events drive the Live node's idle mode, which closes and reopens sessions. Features, such as
+ * media, add their nodes and play into the mixer; as part of the output, echo cancellation keeps
+ * them from the model.
  */
 function buildLiveEngine(
   transport: OpenAILiveTransport,
@@ -425,7 +426,7 @@ function buildLiveEngine(
     delegateModel: string
     delegateInstructions: string
   },
-  idleMode: boolean,
+  idle: { timeoutMs: number; wakeGraceMs: number } | null,
   store: boolean,
   otherAudio: { mix: boolean; ducking: OtherAudioDucking },
   microphone: Microphone,
@@ -450,7 +451,7 @@ function buildLiveEngine(
   const recorder = (id: string) => (recorders.length > 0 ? [id] : [])
   chain.push(...recorder(DIAGNOSTIC_RECORDERS.mic))
   // Idle mode wakes on speech; features such as media follow it too.
-  const vad = idleMode || features.some((f) => f.userSpeech)
+  const vad = idle !== null || features.some((f) => f.userSpeech)
   if (vad) {
     nodes.push(
       { id: 'vadSplitterNode', type: 'Switchboard.BusSplitter' },
@@ -490,6 +491,7 @@ function buildLiveEngine(
         tools,
         // A closed session can only be continued if OpenAI stored it.
         store,
+        ...(idle ? { idleTimeoutMs: idle.timeoutMs, wakeGraceMs: idle.wakeGraceMs } : {}),
       },
     },
     { id: LIVE_SPLITTER_NODE, type: 'Switchboard.BusSplitter' },
@@ -568,6 +570,12 @@ function buildLiveEngine(
         config: { sampleRate: GRAPH_SAMPLE_RATE, bufferSize: GRAPH_SAMPLE_RATE / 100 },
         nodes,
         connections,
+        dataConnections: idle
+          ? (['speechStarted', 'speechEnded'] as const).map((name) => ({
+              source: `${VAD_NODE}/events/${name}`,
+              destination: `${LIVE_NODE}/actions/${name}`,
+            }))
+          : [],
       },
     },
   }
@@ -631,17 +639,11 @@ export function createOpenAILiveToolkit() {
   let continueConversation = false
   const voiceLevelListeners = new Set<VoiceLevelListener>()
   let voiceLevelTimer: ReturnType<typeof setInterval> | null = null
-  let cancelIdleTimer: (() => void) | null = null
-  // The session was closed for idling and reopens when the user speaks.
+  // The Live node's idle mode closed the session, and reopens it when the user speaks.
   let idle = false
-  // The latest session, which a wake continues. Null makes the next wake start fresh.
+  // The latest session, which a start with continueConversation forks. Null starts fresh.
   let lastSessionId: string | null = null
-  // The session coming up is a fork of lastSessionId.
-  let forking = false
-  // Woken by speech the model hasn't answered yet, so the countdown is wakeGraceMs.
-  let woken = false
   let userSpeaking = false
-  let toolCallsInFlight = 0
   // Calls whose tool event hasn't arrived: callId → tool name. The Live node emits a tool's own
   // event after toolCall, for the tools it was created with.
   const toolEventsDue = new Map<string, string>()
@@ -746,10 +748,6 @@ export function createOpenAILiveToolkit() {
    */
   function sessionFailed(reason: unknown, reconnecting: unknown): void {
     const failure = takeHeldFailure()
-    // The node keeps a fork it couldn't reach, and starts a new session after a refused one.
-    if (reason !== 'unreachable') {
-      forking = false
-    }
     if (reconnecting === false) {
       stopWatchingOffline()
       emitError(
@@ -1087,7 +1085,7 @@ export function createOpenAILiveToolkit() {
           delegateTools(),
           lastWrittenToolsNote,
           session,
-          idleTimeoutMs > 0,
+          idleTimeoutMs > 0 ? { timeoutMs: idleTimeoutMs, wakeGraceMs } : null,
           idleTimeoutMs > 0 || continueConversation,
           otherAudio,
           microphone,
@@ -1121,11 +1119,11 @@ export function createOpenAILiveToolkit() {
     }
     // With continueConversation the graph start forks the last session. Set even with nothing to
     // fork, so a fork left over from a failed start doesn't apply.
-    forking =
+    if (
       continueConversation &&
       !c.setValue(LIVE_NODE, 'forkSessionId', lastSessionId ?? '').error &&
       lastSessionId !== null
-    if (forking) {
+    ) {
       log(`start: forking ${lastSessionId}`)
     }
     const startRes = c.callAction(id, 'start')
@@ -1347,7 +1345,9 @@ export function createOpenAILiveToolkit() {
   function setMuted(next: boolean): void {
     log(next ? 'muted' : 'unmuted')
     muted = next
-    if (sessionLive) {
+    // Also while no session is up: the node keeps it for the next one, and muted speech doesn't
+    // wake an idle session.
+    if (running) {
       client?.callAction(LIVE_NODE, next ? 'muteInput' : 'unmuteInput')
     }
   }
@@ -1397,16 +1397,6 @@ export function createOpenAILiveToolkit() {
    * to {@link addErrorListener}.
    */
   async function handleToolCall(call: ToolCall): Promise<void> {
-    toolCallsInFlight++
-    try {
-      await runToolCall(call)
-    } finally {
-      toolCallsInFlight--
-      touch()
-    }
-  }
-
-  async function runToolCall(call: ToolCall): Promise<void> {
     const tool = tools.get(call.name)
     let action: 'submitToolResult' | 'submitToolError' = 'submitToolResult'
     let params: Record<string, string>
@@ -1733,88 +1723,22 @@ export function createOpenAILiveToolkit() {
     return null
   }
 
-  /** (Re)start the idle countdown. Anything that shows the conversation is going calls this. */
-  function touch(): void {
-    if (idleTimeoutMs <= 0 || idle || !running) {
-      return
-    }
-    const timeoutMs =
-      woken && wakeGraceMs > 0 ? Math.min(wakeGraceMs, idleTimeoutMs) : idleTimeoutMs
-    cancelIdleTimer?.()
-    cancelIdleTimer = backgroundTimeout(goIdle, timeoutMs)
-  }
-
-  /** The model answered a wake, so it was the user: back to the full timeout. */
-  function engaged(): void {
-    woken = false
-    touch()
-  }
-
-  /** Close a session nobody has talked in for {@link idleTimeoutMs}. */
-  function goIdle(): void {
-    cancelIdleTimer = null
-    // A session that isn't up bills nothing; the next sessionStarted restarts the countdown.
-    if (!sessionLive) {
-      return
-    }
-    if (userSpeaking || toolCallsInFlight > 0) {
-      touch()
-      return
-    }
-    if (client?.callAction(LIVE_NODE, 'endSession').error) {
-      touch()
-      return
-    }
-    flushTranscript()
-    log('idle: session ended')
-    idle = true
-    woken = false
-    sessionLive = false
-    syncOtherAppsDuck()
-    // The node reports no sessionClosed for a session it was told to end, so say it here.
-    const event: OpenAILiveToolkitEvent = {
-      type: 'live',
-      name: 'sessionEnded',
-      objectURI: `${engineId}.${LIVE_NODE}`,
-      data: undefined,
-      raw: '',
-    }
-    listeners.live.forEach((l) => l(event))
-  }
-
-  /** The user spoke into an idle session: reopen it, continuing the conversation if there is one. */
-  function wake(): void {
-    // A muted model wouldn't hear them anyway.
-    if (muted) {
-      return
-    }
-    idle = false
-    woken = true
-    forking = lastSessionId !== null
-    log(forking ? `wake: forking ${lastSessionId}` : 'wake: new session')
-    client?.callAction(LIVE_NODE, 'startSession', forking ? { forkSessionId: lastSessionId } : {})
-  }
-
   function resetIdle(): void {
-    cancelIdleTimer?.()
-    cancelIdleTimer = null
     idle = false
-    woken = false
-    forking = false
     userSpeaking = false
   }
 
   /**
-   * Forget the conversation, so the next session starts fresh. A session that's up is replaced
-   * by a new one now; one closed by idle mode reopens fresh on the next wake.
+   * Forget the conversation, so the next session starts fresh. A session that's up, or one idle
+   * mode closed, is replaced by a new one now.
    */
   function newConversation(): void {
     lastSessionId = null
-    forking = false
-    if (!client || !running || idle) {
+    if (!client || !running) {
       return
     }
     log('new conversation')
+    idle = false
     client.callAction(LIVE_NODE, 'resetSession')
   }
 
@@ -1943,17 +1867,18 @@ export function createOpenAILiveToolkit() {
         toolEventsDue.set(call.callId, call.name)
         flushTranscript()
         log(`tool call ${call.name}${logConversation ? ` ${call.argumentsJson ?? ''}` : ''}`)
-        woken = false
         handleToolCall(call)
         break
       }
       case 'sessionStarted': {
-        const continued = forking
+        const data = event.data as { sessionId?: string; continued?: boolean } | undefined
+        // Whether it forked the last session, so it still holds the context that one was given.
+        const continued = data?.continued === true
         sessionLive = true
-        lastSessionId = (event.data as { sessionId?: string } | undefined)?.sessionId || null
+        idle = false
+        lastSessionId = data?.sessionId || null
         log(`session started ${lastSessionId}${continued ? ' (fork)' : ''}`)
-        // So the app can tell whether context it gave the last session is still there.
-        event.data = { ...(event.data as object | undefined), continued }
+        event.data = { ...data, continued }
         // A session starts unmuted, or with the last mute the node accepted, which misses changes
         // made while no session was live. Send the app's choice either way.
         client?.callAction(LIVE_NODE, muted ? 'muteInput' : 'unmuteInput')
@@ -1964,7 +1889,6 @@ export function createOpenAILiveToolkit() {
           sessionToolsNote = lastWrittenToolsNote
           notesTold.clear()
         }
-        forking = false
         failedTries = 0
         // An error it came up after didn't stop it.
         const failure = takeHeldFailure()
@@ -1981,17 +1905,24 @@ export function createOpenAILiveToolkit() {
           addContext(offlineNote)
           offlineNote = null
         }
-        touch()
         break
       }
-      // An "mm" from a noise restarts the countdown but doesn't show the model was talked to.
+      case 'sessionIdle':
+        flushTranscript()
+        log('idle: session ended')
+        idle = true
+        sessionLive = false
+        syncOtherAppsDuck()
+        break
+      case 'sessionWoken':
+        log('wake')
+        idle = false
+        break
       case 'inputTranscriptDelta':
         logTranscript('user', (event.data as { delta?: string } | undefined)?.delta ?? '')
-        touch()
         break
       case 'outputTranscriptDelta':
         logTranscript('assistant', (event.data as { delta?: string } | undefined)?.delta ?? '')
-        engaged()
         break
       case 'delegationCreated': {
         flushTranscript()
@@ -2001,7 +1932,6 @@ export function createOpenAILiveToolkit() {
           target?: string
         }
         log(`delegation ${JSON.stringify({ delegationId, target })}`)
-        engaged()
         break
       }
       case 'sessionStarting':
@@ -2045,17 +1975,11 @@ export function createOpenAILiveToolkit() {
   }
 
   function handleVadEvent(name: string): void {
-    if (name === 'speechStarted') {
-      userSpeaking = true
-      if (idle) {
-        wake()
-      }
-    } else if (name === 'speechEnded') {
-      userSpeaking = false
-      touch()
-    } else {
+    // Idle mode gets them from the graph's data connections.
+    if (name !== 'speechStarted' && name !== 'speechEnded') {
       return
     }
+    userSpeaking = name === 'speechStarted'
     // Muted, the user isn't talking to the model.
     features.forEach((f) => f.userSpeaking(userSpeaking && !muted))
   }
