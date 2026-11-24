@@ -29,4 +29,5 @@ jobs:
             echo "$spec is already on npm"
             exit 0
           fi
-          npx --yes npm@11 publish
+          # npm 11 wants a tag for a prerelease. There's no stable release yet, so a beta is latest.
+          npx --yes npm@11 publish --tag latest
