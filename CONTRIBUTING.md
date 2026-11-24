@@ -94,11 +94,11 @@ version="v$(node -p "require('./package.json').version")"
 git tag "$version" && git push origin "$version"
 ```
 
-The [release workflow](.github/workflows/publish.yml) builds the package and stages it on npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. Trusted publishing can only stage, so the version isn't live until someone with publish rights to the `@synervoz` scope approves it, with 2FA:
+The [release workflow](.github/workflows/publish.yml) builds the package and stages it on npm with provenance. It authenticates through npm trusted publishing, set up on npmjs.com for this repository and workflow, so the repository holds no npm token. Trusted publishing can only stage, so the version isn't live until someone with publish rights to the `@synervoz` scope approves it, with 2FA. `npm stage` needs npm 11.15.0 or later, which `npx npm@latest` runs without upgrading:
 
 ```sh
-npm stage list @synervoz/openai-live-toolkit
-npm stage approve <stage-id>
+npx npm@latest stage list @synervoz/openai-live-toolkit
+npx npm@latest stage approve <stage-id>
 ```
 
 The workflow skips a version that's already on npm.
